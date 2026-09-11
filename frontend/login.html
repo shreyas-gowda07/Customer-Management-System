@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+```
+<title>Login - Customer Management System</title>
+
+<link rel="stylesheet" href="style.css">
+```
+
+</head>
+
+<body class="login-page">
+
+```
+<div class="login-card">
+
+    <h1>Welcome Back</h1>
+
+    <p>Login to Customer Management System</p>
+
+    <form id="loginForm">
+
+        <input
+            type="email"
+            id="email"
+            placeholder="Enter your email"
+            required
+        >
+
+        <input
+            type="password"
+            id="password"
+            placeholder="Enter your password"
+            required
+        >
+
+        <button type="submit">
+            Login
+        </button>
+
+    </form>
+
+    <p id="loginMessage"></p>
+
+    <a href="register.html">
+        Create New Account
+    </a>
+
+    <br>
+
+    <a href="forgot-password.html">
+        Forgot Password?
+    </a>
+
+</div>
+
+<script>
+
+    const API_URL = "http://127.0.0.1:8000";
+
+    document.getElementById("loginForm").addEventListener(
+        "submit",
+        async function(event) {
+
+            event.preventDefault();
+
+            const email =
+                document.getElementById("email").value;
+
+            const password =
+                document.getElementById("password").value;
+
+            const message =
+                document.getElementById("loginMessage");
+
+            try {
+
+                const response = await fetch(
+                    `${API_URL}/login`,
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+                            email: email,
+                            password: password
+                        })
+                    }
+                );
+
+                const data = await response.json();
+
+                if (!response.ok) {
+
+                    message.textContent =
+                        data.detail || "Login failed";
+
+                    message.style.color = "red";
+
+                    return;
+                }
+
+                localStorage.setItem(
+                    "access_token",
+                    data.access_token
+                );
+
+                localStorage.setItem(
+                    "customer",
+                    JSON.stringify(data.customer)
+                );
+
+                message.textContent =
+                    "Login successful!";
+
+                message.style.color = "green";
+
+                setTimeout(function() {
+
+                    window.location.href = "index.html";
+
+                }, 500);
+
+            } catch (error) {
+
+                console.error(error);
+
+                message.textContent =
+                    "Unable to connect to server.";
+
+                message.style.color = "red";
+            }
+
+        }
+    );
+
+</script>
+```
+
+</body>
+
+</html>

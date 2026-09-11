@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Customer Management System</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body class="dashboard-page">
+
+<div class="container">
+
+
+    <!-- =========================================
+         HEADER
+    ========================================== -->
+
+    <div class="header">
+
+        <h1>Customer Management System</h1>
+
+    </div>
+
+
+    <!-- =========================================
+         PROFILE BUTTON
+         SEPARATE FROM HEADER
+    ========================================== -->
+
+    <div class="profile-container">
+
+        <button
+            type="button"
+            class="profile-button"
+            onclick="toggleProfile()"
+            aria-label="Profile"
+        >
+            👤
+        </button>
+
+
+        <!-- =====================================
+             PROFILE DROPDOWN
+        ====================================== -->
+
+        <div
+            id="profileDropdown"
+            class="profile-dropdown"
+        >
+
+            <div class="profile-item">
+
+                <span>Name</span>
+
+                <strong id="profileName">
+                    User
+                </strong>
+
+            </div>
+
+
+            <div class="profile-item">
+
+                <span>Role</span>
+
+                <strong id="profileRole">
+                    User
+                </strong>
+
+            </div>
+
+
+            <button
+                type="button"
+                class="profile-logout"
+                onclick="logout()"
+            >
+                Logout
+            </button>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =========================================
+         ADD CUSTOMER
+    ========================================== -->
+
+    <div class="card">
+
+        <h2>Add Customer</h2>
+
+
+        <input
+            type="text"
+            id="addName"
+            placeholder="Customer Name"
+        >
+
+
+        <input
+            type="text"
+            id="addCountry"
+            placeholder="Country"
+        >
+
+
+        <input
+            type="email"
+            id="addEmail"
+            placeholder="Email"
+        >
+
+
+        <input
+            type="password"
+            id="addPassword"
+            placeholder="Password"
+        >
+
+
+        <select id="addRole">
+
+            <option value="user">
+                User
+            </option>
+
+            <option value="admin">
+                Admin
+            </option>
+
+        </select>
+
+
+        <button
+            type="button"
+            onclick="addCustomer()"
+        >
+            Add Customer
+        </button>
+
+
+        <p id="addMessage"></p>
+
+    </div>
+
+
+
+    <!-- =========================================
+         FIND CUSTOMER
+    ========================================== -->
+
+    <div class="card">
+
+        <h2>Find Customer</h2>
+
+
+        <input
+            type="number"
+            id="findId"
+            placeholder="Customer ID"
+        >
+
+
+        <button
+            type="button"
+            onclick="findCustomer()"
+        >
+            Find Customer
+        </button>
+
+
+        <div id="findResult"></div>
+
+    </div>
+
+
+
+    <!-- =========================================
+         UPDATE CUSTOMER
+    ========================================== -->
+
+    <div class="card">
+
+        <h2>Update Customer</h2>
+
+
+        <input
+            type="number"
+            id="updateId"
+            placeholder="Customer ID"
+        >
+
+
+        <input
+            type="text"
+            id="updateName"
+            placeholder="New Customer Name"
+        >
+
+
+        <input
+            type="email"
+            id="updateEmail"
+            placeholder="New Email"
+        >
+
+
+        <input
+            type="text"
+            id="updateCountry"
+            placeholder="Country"
+        >
+
+
+        <button
+            type="button"
+            onclick="updateCustomer()"
+        >
+            Update Customer
+        </button>
+
+
+        <p id="updateMessage"></p>
+
+    </div>
+
+
+
+    <!-- =========================================
+         PATCH CUSTOMER
+    ========================================== -->
+
+    <div class="card">
+
+        <h2>Change Country</h2>
+
+
+        <input
+            type="number"
+            id="patchId"
+            placeholder="Customer ID"
+        >
+
+
+        <input
+            type="text"
+            id="patchCountry"
+            placeholder="New Country"
+        >
+
+
+        <button
+            type="button"
+            onclick="patchCustomer()"
+        >
+            Change Country
+        </button>
+
+
+        <p id="patchMessage"></p>
+
+    </div>
+
+
+
+    <!-- =========================================
+         DELETE CUSTOMER
+    ========================================== -->
+
+    <div
+        class="card"
+        id="deleteSection"
+    >
+
+        <h2>Delete Customer</h2>
+
+
+        <input
+            type="number"
+            id="deleteId"
+            placeholder="Customer ID"
+        >
+
+
+        <button
+            type="button"
+            onclick="deleteCustomer()"
+            class="delete-button"
+        >
+            Delete Customer
+        </button>
+
+
+        <p id="deleteMessage"></p>
+
+    </div>
+
+
+
+    <!-- =========================================
+         ALL CUSTOMERS
+    ========================================== -->
+
+    <div class="card">
+
+        <h2>All Customers</h2>
+
+
+        <button
+            type="button"
+            onclick="getCustomers()"
+        >
+            Refresh Customers
+        </button>
+
+
+        <div id="customersTable"></div>
+
+    </div>
+
+
+</div>
+
+
+
+<!-- =========================================
+     JAVASCRIPT
+========================================== -->
+
+<script>
+
+const API_URL = "http://127.0.0.1:8000";
+
+
+// ==========================================
+// GET JWT TOKEN
+// ==========================================
+
+function getToken() {
+
+    return localStorage.getItem("access_token");
+
+}
+
+
+// ==========================================
+// CHECK LOGIN
+// ==========================================
+
+const customerData =
+    localStorage.getItem("customer");
+
+const token =
+    getToken();
+
+
+if (!customerData || !token) {
+
+    localStorage.removeItem("customer");
+
+    localStorage.removeItem("access_token");
+
+    window.location.href = "login.html";
+
+}
+else {
+
+    const customer =
+        JSON.parse(customerData);
+
+
+    // ======================================
+    // SHOW PROFILE NAME
+    // ======================================
+
+    const profileName =
+        document.getElementById("profileName");
+
+    const profileRole =
+        document.getElementById("profileRole");
+
+
+    if (profileName) {
+
+        profileName.textContent =
+            customer.customer_name || "User";
+
+    }
+
+
+    if (profileRole) {
+
+        profileRole.textContent =
+            customer.role || "user";
+
+    }
+
+
+    // ======================================
+    // HIDE DELETE FOR NORMAL USERS
+    // ======================================
+
+    if (customer.role === "user") {
+
+        const deleteSection =
+            document.getElementById("deleteSection");
+
+        if (deleteSection) {
+
+            deleteSection.style.display = "none";
+
+        }
+
+    }
+
+}
+
+
+
+// ==========================================
+// TOGGLE PROFILE DROPDOWN
+// ==========================================
+
+function toggleProfile() {
+
+    const dropdown =
+        document.getElementById("profileDropdown");
+
+
+    if (!dropdown) {
+
+        return;
+
+    }
+
+
+    dropdown.classList.toggle("show");
+
+}
+
+
+
+// ==========================================
+// CLOSE PROFILE WHEN CLICKING OUTSIDE
+// ==========================================
+
+document.addEventListener(
+    "click",
+    function(event) {
+
+        const profileContainer =
+            document.querySelector(".profile-container");
+
+
+        const dropdown =
+            document.getElementById("profileDropdown");
+
+
+        if (
+            profileContainer &&
+            dropdown &&
+            !profileContainer.contains(event.target)
+        ) {
+
+            dropdown.classList.remove("show");
+
+        }
+
+    }
+);
+
+
+
+// ==========================================
+// LOGOUT
+// ==========================================
+
+function logout() {
+
+    localStorage.removeItem("customer");
+
+    localStorage.removeItem("access_token");
+
+    window.location.href = "login.html";
+
+}
+
+
+
+// ==========================================
+// ADD CUSTOMER
+// POST = CREATE CUSTOMER
+// ==========================================
+
+async function addCustomer() {
+
+    const customer_name =
+        document.getElementById("addName").value.trim();
+
+
+    const country =
+        document.getElementById("addCountry").value.trim();
+
+
+    const email =
+        document.getElementById("addEmail").value.trim();
+
+
+    const password =
+        document.getElementById("addPassword").value;
+
+
+    const role =
+        document.getElementById("addRole").value;
+
+
+    const token =
+        getToken();
+
+
+    if (
+        !customer_name ||
+        !country ||
+        !email ||
+        !password
+    ) {
+
+        document.getElementById(
+            "addMessage"
+        ).textContent =
+            "Please fill all customer details.";
+
+        document.getElementById(
+            "addMessage"
+        ).style.color =
+            "red";
+
+        return;
+
+    }
+
+
+    if (!token) {
+
+        document.getElementById(
+            "addMessage"
+        ).textContent =
+            "You are not logged in.";
+
+        document.getElementById(
+            "addMessage"
+        ).style.color =
+            "red";
+
+        return;
+
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers`,
+                {
+
+                    method: "POST",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json",
+
+                        "Authorization":
+                            `Bearer ${token}`
+
+                    },
+
+                    body: JSON.stringify({
+
+                        customer_name:
+                            customer_name,
+
+                        country:
+                            country,
+
+                        email:
+                            email,
+
+                        password:
+                            password,
+
+                        role:
+                            role
+
+                    })
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        console.log(
+            "Add Customer Response:",
+            data
+        );
+
+
+        if (!response.ok) {
+
+            document.getElementById(
+                "addMessage"
+            ).textContent =
+                data.detail ||
+                "Failed to add customer.";
+
+            document.getElementById(
+                "addMessage"
+            ).style.color =
+                "red";
+
+            return;
+
+        }
+
+
+        document.getElementById(
+            "addMessage"
+        ).textContent =
+            "Customer added successfully! Customer ID: " +
+            data.customer_id;
+
+
+        document.getElementById(
+            "addMessage"
+        ).style.color =
+            "green";
+
+
+        document.getElementById(
+            "addName"
+        ).value = "";
+
+
+        document.getElementById(
+            "addCountry"
+        ).value = "";
+
+
+        document.getElementById(
+            "addEmail"
+        ).value = "";
+
+
+        document.getElementById(
+            "addPassword"
+        ).value = "";
+
+
+        document.getElementById(
+            "addRole"
+        ).value = "user";
+
+
+        getCustomers();
+
+    }
+
+
+    catch (error) {
+
+        console.error(
+            "Add Customer Error:",
+            error
+        );
+
+
+        document.getElementById(
+            "addMessage"
+        ).textContent =
+            "Couldn't connect to FastAPI.";
+
+
+        document.getElementById(
+            "addMessage"
+        ).style.color =
+            "red";
+
+    }
+
+}
+
+
+
+// ==========================================
+// FIND CUSTOMER
+// GET = READ ONE CUSTOMER
+// ==========================================
+
+async function findCustomer() {
+
+    const id =
+        document.getElementById("findId").value;
+
+
+    if (!id) {
+
+        document.getElementById(
+            "findResult"
+        ).textContent =
+            "Please enter a Customer ID.";
+
+        return;
+
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers/${id}`,
+                {
+
+                    method: "GET",
+
+                    headers: {
+
+                        "Authorization":
+                            `Bearer ${getToken()}`
+
+                    }
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (response.ok) {
+
+            document.getElementById(
+                "findResult"
+            ).innerHTML = `
+
+                <div class="result">
+
+                    <p>
+                        <strong>ID:</strong>
+                        ${data.customer_id}
+                    </p>
+
+                    <p>
+                        <strong>Name:</strong>
+                        ${data.customer_name}
+                    </p>
+
+                    <p>
+                        <strong>Country:</strong>
+                        ${data.country}
+                    </p>
+
+                    <p>
+                        <strong>Email:</strong>
+                        ${data.email || "Not registered"}
+                    </p>
+
+                </div>
+
+            `;
+
+        }
+        else {
+
+            document.getElementById(
+                "findResult"
+            ).textContent =
+                data.detail ||
+                "Customer not found.";
+
+        }
+
+    }
+
+
+    catch (error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "findResult"
+        ).textContent =
+            "Cannot connect to FastAPI.";
+
+    }
+
+}
+
+
+
+// ==========================================
+// UPDATE CUSTOMER
+// PUT = UPDATE
+// ==========================================
+
+async function updateCustomer() {
+
+    const id =
+        document.getElementById("updateId").value;
+
+
+    const name =
+        document.getElementById("updateName").value;
+
+
+    const email =
+        document.getElementById("updateEmail").value;
+
+
+    const country =
+        document.getElementById("updateCountry").value;
+
+
+    if (!id || !name || !email || !country) {
+
+        document.getElementById(
+            "updateMessage"
+        ).textContent =
+            "Please enter ID, name, email and country.";
+
+        return;
+
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers/${id}`,
+                {
+
+                    method: "PUT",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json",
+
+                        "Authorization":
+                            `Bearer ${getToken()}`
+
+                    },
+
+                    body: JSON.stringify({
+
+                        customer_name:
+                            name,
+
+                        email:
+                            email,
+
+                        country:
+                            country
+
+                    })
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (response.ok) {
+
+            document.getElementById(
+                "updateMessage"
+            ).textContent =
+                data.message ||
+                "Customer updated successfully.";
+
+
+            document.getElementById(
+                "updateId"
+            ).value = "";
+
+
+            document.getElementById(
+                "updateName"
+            ).value = "";
+
+
+            document.getElementById(
+                "updateEmail"
+            ).value = "";
+
+
+            document.getElementById(
+                "updateCountry"
+            ).value = "";
+
+
+            getCustomers();
+
+        }
+        else {
+
+            document.getElementById(
+                "updateMessage"
+            ).textContent =
+                data.detail ||
+                "Failed to update customer.";
+
+        }
+
+    }
+
+
+    catch (error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "updateMessage"
+        ).textContent =
+            "Cannot connect to FastAPI.";
+
+    }
+
+}
+
+
+
+// ==========================================
+// PATCH CUSTOMER
+// ==========================================
+
+async function patchCustomer() {
+
+    const id =
+        document.getElementById("patchId").value;
+
+
+    const country =
+        document.getElementById("patchCountry").value;
+
+
+    if (!id || !country) {
+
+        document.getElementById(
+            "patchMessage"
+        ).textContent =
+            "Please enter Customer ID and new country.";
+
+        return;
+
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers/${id}`,
+                {
+
+                    method: "PATCH",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json",
+
+                        "Authorization":
+                            `Bearer ${getToken()}`
+
+                    },
+
+                    body: JSON.stringify({
+
+                        country:
+                            country
+
+                    })
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (response.ok) {
+
+            document.getElementById(
+                "patchMessage"
+            ).textContent =
+                data.message ||
+                "Country updated successfully.";
+
+
+            document.getElementById(
+                "patchId"
+            ).value = "";
+
+
+            document.getElementById(
+                "patchCountry"
+            ).value = "";
+
+
+            getCustomers();
+
+        }
+        else {
+
+            document.getElementById(
+                "patchMessage"
+            ).textContent =
+                data.detail ||
+                "Failed to change country.";
+
+        }
+
+    }
+
+
+    catch (error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "patchMessage"
+        ).textContent =
+            "Cannot connect to FastAPI.";
+
+    }
+
+}
+
+
+
+// ==========================================
+// DELETE CUSTOMER
+// ==========================================
+
+async function deleteCustomer() {
+
+    const id =
+        document.getElementById("deleteId").value;
+
+
+    if (!id) {
+
+        document.getElementById(
+            "deleteMessage"
+        ).textContent =
+            "Please enter Customer ID.";
+
+        return;
+
+    }
+
+
+    if (
+        !confirm(
+            "Are you sure you want to delete this customer?"
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers/${id}`,
+                {
+
+                    method: "DELETE",
+
+                    headers: {
+
+                        "Authorization":
+                            `Bearer ${getToken()}`
+
+                    }
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (response.ok) {
+
+            document.getElementById(
+                "deleteMessage"
+            ).textContent =
+                data.message;
+
+
+            document.getElementById(
+                "deleteId"
+            ).value = "";
+
+
+            getCustomers();
+
+        }
+        else {
+
+            document.getElementById(
+                "deleteMessage"
+            ).textContent =
+                data.detail ||
+                "Failed to delete customer.";
+
+        }
+
+    }
+
+
+    catch (error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "deleteMessage"
+        ).textContent =
+            "Cannot connect to FastAPI.";
+
+    }
+
+}
+
+
+
+// ==========================================
+// GET ALL CUSTOMERS
+// ==========================================
+
+async function getCustomers() {
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_URL}/customers`,
+                {
+
+                    method: "GET",
+
+                    headers: {
+
+                        "Authorization":
+                            `Bearer ${getToken()}`
+
+                    }
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            document.getElementById(
+                "customersTable"
+            ).textContent =
+                data.detail ||
+                "Failed to load customers.";
+
+            return;
+
+        }
+
+
+        let html = `
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>ID</th>
+
+                        <th>Name</th>
+
+                        <th>Country</th>
+
+                        <th>Email</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+        `;
+
+
+        data.customers.forEach(
+            function(customer) {
+
+                html += `
+
+                    <tr>
+
+                        <td>
+                            ${customer.customer_id}
+                        </td>
+
+                        <td>
+                            ${customer.customer_name}
+                        </td>
+
+                        <td>
+                            ${customer.country}
+                        </td>
+
+                        <td>
+                            ${customer.email || "Not registered"}
+                        </td>
+
+                    </tr>
+
+                `;
+
+            }
+        );
+
+
+        html += `
+
+                </tbody>
+
+            </table>
+
+        `;
+
+
+        document.getElementById(
+            "customersTable"
+        ).innerHTML =
+            html;
+
+    }
+
+
+    catch (error) {
+
+        console.error(error);
+
+        document.getElementById(
+            "customersTable"
+        ).textContent =
+            "Cannot connect to FastAPI.";
+
+    }
+
+}
+
+
+
+// ==========================================
+// LOAD CUSTOMERS
+// ==========================================
+
+getCustomers();
+
+</script>
+
+</body>
+
+</html>
