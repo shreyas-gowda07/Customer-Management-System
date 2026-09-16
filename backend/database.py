@@ -5,7 +5,7 @@ conn=psycopg2.connect(
     host="localhost",
     database="postgres",
     user="postgres",
-    password="luffy",
+    password="lufy",
     port="5432"
 )
 print("Database connected successfully")
