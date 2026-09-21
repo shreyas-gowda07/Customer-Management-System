@@ -1,3 +1,0 @@
-This is my first Git practice file.
-I am learning git by practicing real commands.
-This is my 3rd try for practice.
