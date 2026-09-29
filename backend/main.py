@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 import secrets
 import smtplib
 from email.message import EmailMessage
+from log import logger
+
 
 load_dotenv()
 
@@ -21,7 +23,7 @@ load_dotenv()
 # JWT SETTINGS
 # =========================================================
 
-SECRET_KEY = os.getenv("Monkey-D-Luffy")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 
@@ -32,13 +34,8 @@ ALGORITHM = "HS256"
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-# Your Gmail address
-SENDER_EMAIL = os.getenv("donotreply2725@gmail.com")
-
-# IMPORTANT:
-# Put your Gmail APP PASSWORD here.
-# Do NOT put your normal Gmail password.
-SENDER_PASSWORD = os.getenv("saxepzmipdzqecdj")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 
 
 # =========================================================
@@ -46,6 +43,7 @@ SENDER_PASSWORD = os.getenv("saxepzmipdzqecdj")
 # =========================================================
 
 app = FastAPI()
+
 app.mount(
     "/static",
     StaticFiles(directory="../frontend"),
@@ -86,7 +84,7 @@ def get_connection():
         host="localhost",
         database="postgres",
         user="postgres",
-        password=os.getenv("luffy"),
+        password=os.getenv("DB_PASSWORD"),
         port="5432"
     )
 
@@ -146,17 +144,17 @@ class ResetPasswordRequest(BaseModel):
 
 
 # =========================================================
-# GET CURRENT USER FROM JWT
+# AUTHENTICATION
 # =========================================================
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
+    logger.info("Authentication attempt started")
 
     token = credentials.credentials
 
     try:
-
         payload = jwt.decode(
             token,
             SECRET_KEY,
@@ -170,10 +168,22 @@ def get_current_user(
 
         if customer_id is None or email is None or role is None:
 
+            logger.warning(
+                "Authentication failed - required information "
+                "missing from token"
+            )
+
             raise HTTPException(
                 status_code=401,
                 detail="Invalid authentication token"
             )
+
+        logger.info(
+            f"Authentication successful: "
+            f"user={email}, "
+            f"customer_id={customer_id}, "
+            f"role={role}"
+        )
 
         return {
             "customer_id": customer_id,
@@ -184,9 +194,28 @@ def get_current_user(
 
     except JWTError:
 
+        logger.warning(
+            "Authentication failed - invalid or expired JWT token"
+        )
+
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token"
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        logger.error(
+            f"Unexpected authentication error: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Authentication error occurred"
         )
 
 
@@ -198,38 +227,79 @@ def get_current_user(
 def get_customers(
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Get all customers attempt by user={current_user['email']}"
+    )
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT customer_id,
-               customer_name,
-               country,
-               email
-        FROM customers
-        ORDER BY customer_id
-    """)
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT customer_id,
+                   customer_name,
+                   country,
+                   email
+            FROM customers
+            ORDER BY customer_id
+        """)
 
-    cursor.close()
-    conn.close()
+        rows = cursor.fetchall()
 
-    customers = []
+        customers = []
 
-    for row in rows:
+        for row in rows:
+            customers.append({
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3]
+            })
 
-        customers.append({
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
-            "email": row[3]
-        })
+        logger.info(
+            f"Customers retrieved successfully: "
+            f"count={len(customers)}, "
+            f"by user={current_user['email']}"
+        )
 
-    return {
-        "customers": customers
-    }
+        return {
+            "customers": customers
+        }
+
+    except psycopg2.Error as e:
+
+        logger.error(
+            f"Database error while retrieving customers: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve customers"
+        )
+
+    except Exception as e:
+
+        logger.error(
+            f"Unexpected error while retrieving customers: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -241,37 +311,92 @@ def get_customer(
     customer_id: int,
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Get customer attempt: "
+        f"customer_id={customer_id}, "
+        f"by user={current_user['email']}"
+    )
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("""
-        SELECT customer_id,
-               customer_name,
-               country,
-               email
-        FROM customers
-        WHERE customer_id = %s
-    """, (customer_id,))
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    row = cursor.fetchone()
+        cursor.execute("""
+            SELECT customer_id,
+                   customer_name,
+                   country,
+                   email
+            FROM customers
+            WHERE customer_id = %s
+        """, (customer_id,))
 
-    cursor.close()
-    conn.close()
+        row = cursor.fetchone()
 
-    if row is None:
+        if row is None:
 
-        raise HTTPException(
-            status_code=404,
-            detail="Customer not found"
+            logger.warning(
+                f"Get customer failed - customer not found: "
+                f"customer_id={customer_id}, "
+                f"requested by={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found"
+            )
+
+        logger.info(
+            f"Customer retrieved successfully: "
+            f"customer_id={customer_id}, "
+            f"by user={current_user['email']}"
         )
 
-    return {
-        "customer_id": row[0],
-        "customer_name": row[1],
-        "country": row[2],
-        "email": row[3]
-    }
+        return {
+            "customer_id": row[0],
+            "customer_name": row[1],
+            "country": row[2],
+            "email": row[3]
+        }
+
+    except HTTPException:
+        raise
+
+    except psycopg2.Error as e:
+
+        logger.error(
+            f"Database error while retrieving customer "
+            f"customer_id={customer_id}: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve customer"
+        )
+
+    except Exception as e:
+
+        logger.error(
+            f"Unexpected error while retrieving customer "
+            f"customer_id={customer_id}: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -283,31 +408,47 @@ def create_customer(
     customer: CustomerCreate,
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Create customer attempt by user={current_user['email']}"
+    )
 
-    if current_user["role"] not in ["admin", "super-admin"]:
-
-        raise HTTPException(
-            status_code=403,
-            detail="Only Admin or Super-Admin can add users"
-        )
-
-    if customer.role not in ["user", "admin"]:
-
-        raise HTTPException(
-            status_code=400,
-            detail="New users can only be User or Admin"
-        )
-
-    conn = get_connection()
-    cur = conn.cursor()
+    conn = None
+    cursor = None
 
     try:
+
+        if current_user["role"] not in ["admin", "super-admin"]:
+
+            logger.warning(
+                f"Create customer denied - insufficient permission: "
+                f"user={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Only Admin or Super-Admin can add users"
+            )
+
+        if customer.role not in ["user", "admin"]:
+
+            logger.warning(
+                f"Create customer failed - invalid role: "
+                f"role={customer.role}"
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="New users can only be User or Admin"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
 
         hashed_password = password_hash.hash(
             customer.password
         )
 
-        cur.execute(
+        cursor.execute(
             """
             INSERT INTO customers
             (
@@ -330,9 +471,15 @@ def create_customer(
             )
         )
 
-        customer_id = cur.fetchone()[0]
+        customer_id = cursor.fetchone()[0]
 
         conn.commit()
+
+        logger.info(
+            f"Customer created successfully: "
+            f"customer_id={customer_id}, "
+            f"created by={current_user['email']}"
+        )
 
         return {
             "message": "Customer created successfully",
@@ -340,19 +487,65 @@ def create_customer(
             "role": customer.role
         }
 
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
     except psycopg2.errors.UniqueViolation:
 
-        conn.rollback()
+        if conn:
+            conn.rollback()
+
+        logger.warning(
+            f"Create customer failed - email already exists: "
+            f"{customer.email}"
+        )
 
         raise HTTPException(
             status_code=400,
             detail="Email already exists"
         )
 
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error while creating customer: "
+            f"{str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create customer"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error while creating customer: "
+            f"{str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
     finally:
 
-        cur.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -365,63 +558,147 @@ def update_customer(
     customer: CustomerUpdate,
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Update customer attempt: "
+        f"customer_id={customer_id}, "
+        f"by user={current_user['email']}"
+    )
 
-    if (
-        current_user["role"] == "user"
-        and current_user["customer_id"] != customer_id
-    ):
+    conn = None
+    cursor = None
 
-        raise HTTPException(
-            status_code=403,
-            detail="Users can update only their own account"
+    try:
+
+        if (
+            current_user["role"] == "user"
+            and current_user["customer_id"] != customer_id
+        ):
+
+            logger.warning(
+                f"Update customer denied: "
+                f"user={current_user['email']} "
+                f"tried to update customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Users can update only their own account"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE customers
+            SET customer_name = %s,
+                email = %s,
+                country = COALESCE(%s, country)
+            WHERE customer_id = %s
+            RETURNING customer_id,
+                      customer_name,
+                      country,
+                      email
+        """, (
+            customer.customer_name,
+            customer.email,
+            customer.country,
+            customer_id
+        ))
+
+        row = cursor.fetchone()
+
+        if row is None:
+
+            logger.warning(
+                f"Update customer failed - customer not found: "
+                f"customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found"
+            )
+
+        conn.commit()
+
+        logger.info(
+            f"Customer updated successfully: "
+            f"customer_id={customer_id}, "
+            f"by user={current_user['email']}"
         )
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE customers
-        SET customer_name = %s,
-            email = %s,
-            country = COALESCE(%s, country)
-        WHERE customer_id = %s
-        RETURNING customer_id,
-                  customer_name,
-                  country,
-                  email
-    """, (
-        customer.customer_name,
-        customer.email,
-        customer.country,
-        customer_id
-    ))
-
-    row = cursor.fetchone()
-
-    if row is None:
-
-        cursor.close()
-        conn.close()
-
-        raise HTTPException(
-            status_code=404,
-            detail="Customer not found"
-        )
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {
-        "message": "Customer completely updated",
-        "customer": {
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
-            "email": row[3]
+        return {
+            "message": "Customer completely updated",
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3]
+            }
         }
-    }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except psycopg2.errors.UniqueViolation:
+
+        if conn:
+            conn.rollback()
+
+        logger.warning(
+            f"Update customer failed - email already exists: "
+            f"customer_id={customer_id}, "
+            f"email={customer.email}"
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail="Email already exists"
+        )
+
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error while updating customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update customer"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error while updating customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -434,59 +711,127 @@ def patch_customer(
     customer: CustomerPatch,
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Patch customer attempt: "
+        f"customer_id={customer_id}, "
+        f"by user={current_user['email']}"
+    )
 
-    if (
-        current_user["role"] == "user"
-        and current_user["customer_id"] != customer_id
-    ):
+    conn = None
+    cursor = None
 
-        raise HTTPException(
-            status_code=403,
-            detail="Users can change only their own country"
+    try:
+
+        if (
+            current_user["role"] == "user"
+            and current_user["customer_id"] != customer_id
+        ):
+
+            logger.warning(
+                f"Patch customer denied: "
+                f"user={current_user['email']} "
+                f"tried to change customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Users can change only their own country"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE customers
+            SET country = %s
+            WHERE customer_id = %s
+            RETURNING customer_id,
+                      customer_name,
+                      country,
+                      email
+        """, (
+            customer.country,
+            customer_id
+        ))
+
+        row = cursor.fetchone()
+
+        if row is None:
+
+            logger.warning(
+                f"Patch customer failed - customer not found: "
+                f"customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found"
+            )
+
+        conn.commit()
+
+        logger.info(
+            f"Customer country patched successfully: "
+            f"customer_id={customer_id}, "
+            f"by user={current_user['email']}"
         )
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        UPDATE customers
-        SET country = %s
-        WHERE customer_id = %s
-        RETURNING customer_id,
-                  customer_name,
-                  country,
-                  email
-    """, (
-        customer.country,
-        customer_id
-    ))
-
-    row = cursor.fetchone()
-
-    if row is None:
-
-        cursor.close()
-        conn.close()
-
-        raise HTTPException(
-            status_code=404,
-            detail="Customer not found"
-        )
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {
-        "message": "Customer partially updated",
-        "customer": {
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
-            "email": row[3]
+        return {
+            "message": "Customer partially updated",
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3]
+            }
         }
-    }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error while patching customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to patch customer"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error while patching customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -498,61 +843,134 @@ def delete_customer(
     customer_id: int,
     current_user: dict = Depends(get_current_user)
 ):
+    logger.info(
+        f"Delete customer attempt: "
+        f"customer_id={customer_id}, "
+        f"by user={current_user['email']}"
+    )
 
-    role = current_user["role"]
+    conn = None
+    cursor = None
 
-    if role == "user":
+    try:
 
-        raise HTTPException(
-            status_code=403,
-            detail="Users are not allowed to delete customers"
+        role = current_user["role"]
+
+        if role == "user":
+
+            logger.warning(
+                f"Delete customer denied - "
+                f"user={current_user['email']} "
+                f"tried to delete customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Users are not allowed to delete customers"
+            )
+
+        if role not in ["admin", "super-admin"]:
+
+            logger.warning(
+                f"Delete customer denied - insufficient permission: "
+                f"user={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to delete customers"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            DELETE FROM customers
+            WHERE customer_id = %s
+            RETURNING customer_id,
+                      customer_name,
+                      country,
+                      email
+        """, (customer_id,))
+
+        row = cursor.fetchone()
+
+        if row is None:
+
+            logger.warning(
+                f"Delete customer failed - customer not found: "
+                f"customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found"
+            )
+
+        conn.commit()
+
+        logger.info(
+            f"Customer deleted successfully: "
+            f"customer_id={customer_id}, "
+            f"by user={current_user['email']}"
         )
 
-    if role not in ["admin", "super-admin"]:
-
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have permission to delete customers"
-        )
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        DELETE FROM customers
-        WHERE customer_id = %s
-        RETURNING customer_id,
-                  customer_name,
-                  country,
-                  email
-    """, (customer_id,))
-
-    row = cursor.fetchone()
-
-    if row is None:
-
-        cursor.close()
-        conn.close()
-
-        raise HTTPException(
-            status_code=404,
-            detail="Customer not found"
-        )
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {
-        "message": "Customer deleted successfully",
-        "customer": {
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
-            "email": row[3]
+        return {
+            "message": "Customer deleted successfully",
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3]
+            }
         }
-    }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error while deleting customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete customer"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error while deleting customer: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -562,68 +980,144 @@ def delete_customer(
 @app.post("/register")
 def register_user(user: RegisterUser):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    logger.info(
+        f"Registration attempt: email={user.email}"
+    )
 
-    cursor.execute("""
-        SELECT customer_id
-        FROM customers
-        WHERE email = %s
-    """, (user.email,))
+    conn = None
+    cursor = None
 
-    existing_user = cursor.fetchone()
+    try:
 
-    if existing_user is not None:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-        cursor.close()
-        conn.close()
+        cursor.execute("""
+            SELECT customer_id
+            FROM customers
+            WHERE email = %s
+        """, (user.email,))
+
+        existing_user = cursor.fetchone()
+
+        if existing_user is not None:
+
+            logger.warning(
+                f"Registration failed - email already registered: "
+                f"{user.email}"
+            )
+
+            raise HTTPException(
+                status_code=409,
+                detail="Email already registered"
+            )
+
+        hashed_password = password_hash.hash(user.password)
+
+        cursor.execute("""
+            INSERT INTO customers (
+                customer_name,
+                country,
+                email,
+                password,
+                role,
+                can_delete
+            )
+            VALUES (%s, %s, %s, %s, 'user', FALSE)
+            RETURNING customer_id,
+                      customer_name,
+                      country,
+                      email,
+                      role
+        """, (
+            user.customer_name,
+            user.country,
+            user.email,
+            hashed_password
+        ))
+
+        row = cursor.fetchone()
+
+        conn.commit()
+
+        logger.info(
+            f"Registration successful: "
+            f"customer_id={row[0]}, "
+            f"email={user.email}"
+        )
+
+        return {
+            "message": "Registration successful",
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3],
+                "role": row[4]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except psycopg2.errors.UniqueViolation:
+
+        if conn:
+            conn.rollback()
+
+        logger.warning(
+            f"Registration failed - duplicate email: "
+            f"{user.email}"
+        )
 
         raise HTTPException(
             status_code=409,
             detail="Email already registered"
         )
 
-    hashed_password = password_hash.hash(user.password)
+    except psycopg2.Error as e:
 
-    cursor.execute("""
-        INSERT INTO customers (
-            customer_name,
-            country,
-            email,
-            password,
-            role,
-            can_delete
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error during registration: "
+            f"email={user.email}, "
+            f"error={str(e)}",
+            exc_info=True
         )
-        VALUES (%s, %s, %s, %s, 'user', FALSE)
-        RETURNING customer_id,
-                  customer_name,
-                  country,
-                  email,
-                  role
-    """, (
-        user.customer_name,
-        user.country,
-        user.email,
-        hashed_password
-    ))
 
-    row = cursor.fetchone()
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to register user"
+        )
 
-    conn.commit()
+    except Exception as e:
 
-    cursor.close()
-    conn.close()
+        if conn:
+            conn.rollback()
 
-    return {
-        "message": "Registration successful",
-        "customer": {
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
-            "email": row[3],
-            "role": row[4]
-        }
-    }
+        logger.error(
+            f"Unexpected error during registration: "
+            f"email={user.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -633,71 +1127,128 @@ def register_user(user: RegisterUser):
 @app.post("/login")
 def login_user(user: LoginUser):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT customer_id,
-               customer_name,
-               country,
-               email,
-               password,
-               role,
-               can_delete
-        FROM customers
-        WHERE email = %s
-    """, (user.email,))
-
-    row = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-
-    if row is None:
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
-
-    stored_password = row[4]
-
-    if not password_hash.verify(
-        user.password,
-        stored_password
-    ):
-
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
-
-    database_role = row[5]
-
-    token_data = {
-        "customer_id": row[0],
-        "email": row[3],
-        "role": database_role,
-        "can_delete": row[6]
-    }
-
-    access_token = jwt.encode(
-        token_data,
-        SECRET_KEY,
-        algorithm=ALGORITHM
+    logger.info(
+        f"Login attempt: {user.email}"
     )
 
-    return {
-        "message": "Login successful",
-        "access_token": access_token,
-        "customer": {
+    conn = None
+    cursor = None
+
+    try:
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id,
+                   customer_name,
+                   country,
+                   email,
+                   password,
+                   role,
+                   can_delete
+            FROM customers
+            WHERE email = %s
+        """, (user.email,))
+
+        row = cursor.fetchone()
+
+        if row is None:
+
+            logger.warning(
+                f"Login failed - user not found: {user.email}"
+            )
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        stored_password = row[4]
+
+        if not password_hash.verify(
+            user.password,
+            stored_password
+        ):
+
+            logger.warning(
+                f"Login failed - incorrect password: {user.email}"
+            )
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+        database_role = row[5]
+
+        token_data = {
             "customer_id": row[0],
-            "customer_name": row[1],
-            "country": row[2],
             "email": row[3],
-            "role": database_role
+            "role": database_role,
+            "can_delete": row[6]
         }
-    }
+
+        access_token = jwt.encode(
+            token_data,
+            SECRET_KEY,
+            algorithm=ALGORITHM
+        )
+
+        logger.info(
+            f"Login successful: {user.email}"
+        )
+
+        return {
+            "message": "Login successful",
+            "access_token": access_token,
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3],
+                "role": database_role
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except psycopg2.Error as e:
+
+        logger.error(
+            f"Database error during login: "
+            f"email={user.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process login"
+        )
+
+    except Exception as e:
+
+        logger.error(
+            f"Unexpected error during login: "
+            f"email={user.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -712,70 +1263,145 @@ def update_delete_permission(
     current_user: dict = Depends(get_current_user)
 ):
 
-    current_role = current_user["role"]
+    logger.info(
+        f"Delete permission update attempt: "
+        f"target_customer_id={customer_id}, "
+        f"requested by={current_user['email']}"
+    )
 
-    if current_role not in ["admin", "super-admin"]:
+    conn = None
+    cursor = None
 
-        raise HTTPException(
-            status_code=403,
-            detail="Only Admin or Super Admin can grant permissions"
+    try:
+
+        current_role = current_user["role"]
+
+        if current_role not in ["admin", "super-admin"]:
+
+            logger.warning(
+                f"Delete permission update denied - "
+                f"insufficient permission: "
+                f"user={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Only Admin or Super Admin can grant permissions"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT role
+            FROM customers
+            WHERE customer_id = %s
+        """, (customer_id,))
+
+        user = cursor.fetchone()
+
+        if user is None:
+
+            logger.warning(
+                f"Delete permission update failed - "
+                f"user not found: "
+                f"customer_id={customer_id}"
+            )
+
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        target_role = user[0]
+
+        if (
+            current_role == "admin"
+            and target_role == "super-admin"
+        ):
+
+            logger.warning(
+                f"Delete permission update denied - "
+                f"Admin attempted to modify Super Admin: "
+                f"target_customer_id={customer_id}, "
+                f"requested by={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Admin cannot modify Super Admin permissions"
+            )
+
+        cursor.execute("""
+            UPDATE customers
+            SET can_delete = %s
+            WHERE customer_id = %s
+        """, (
+            permission.can_delete,
+            customer_id
+        ))
+
+        conn.commit()
+
+        logger.info(
+            f"Delete permission updated successfully: "
+            f"customer_id={customer_id}, "
+            f"can_delete={permission.can_delete}, "
+            f"updated by={current_user['email']}"
         )
 
-    conn = get_connection()
-    cursor = conn.cursor()
+        return {
+            "message": "Delete permission updated",
+            "customer_id": customer_id,
+            "can_delete": permission.can_delete
+        }
 
-    cursor.execute("""
-        SELECT role
-        FROM customers
-        WHERE customer_id = %s
-    """, (customer_id,))
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
 
-    user = cursor.fetchone()
+    except psycopg2.Error as e:
 
-    if user is None:
+        if conn:
+            conn.rollback()
 
-        cursor.close()
-        conn.close()
-
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
+        logger.error(
+            f"Database error while updating delete permission: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
         )
 
-    target_role = user[0]
-
-    if (
-        current_role == "admin"
-        and target_role == "super-admin"
-    ):
-
-        cursor.close()
-        conn.close()
-
         raise HTTPException(
-            status_code=403,
-            detail="Admin cannot modify Super Admin permissions"
+            status_code=500,
+            detail="Unable to update delete permission"
         )
 
-    cursor.execute("""
-        UPDATE customers
-        SET can_delete = %s
-        WHERE customer_id = %s
-    """, (
-        permission.can_delete,
-        customer_id
-    ))
+    except Exception as e:
 
-    conn.commit()
+        if conn:
+            conn.rollback()
 
-    cursor.close()
-    conn.close()
+        logger.error(
+            f"Unexpected error while updating delete permission: "
+            f"customer_id={customer_id}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
 
-    return {
-        "message": "Delete permission updated",
-        "customer_id": customer_id,
-        "can_delete": permission.can_delete
-    }
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -788,46 +1414,99 @@ def get_admin_users(
     current_user: dict = Depends(get_current_user)
 ):
 
-    if current_user["role"] not in ["admin", "super-admin"]:
+    logger.info(
+        f"Get admin users attempt by user={current_user['email']}"
+    )
 
-        raise HTTPException(
-            status_code=403,
-            detail="Only Admin or Super Admin can access this page"
+    conn = None
+    cursor = None
+
+    try:
+
+        if current_user["role"] not in ["admin", "super-admin"]:
+
+            logger.warning(
+                f"Get admin users denied - insufficient permission: "
+                f"user={current_user['email']}"
+            )
+
+            raise HTTPException(
+                status_code=403,
+                detail="Only Admin or Super Admin can access this page"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id,
+                   customer_name,
+                   email,
+                   role,
+                   can_delete
+            FROM customers
+            ORDER BY customer_id
+        """)
+
+        rows = cursor.fetchall()
+
+        users = []
+
+        for row in rows:
+            users.append({
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "email": row[2],
+                "role": row[3],
+                "can_delete": row[4]
+            })
+
+        logger.info(
+            f"Admin users retrieved successfully: "
+            f"count={len(users)}, "
+            f"requested by={current_user['email']}"
         )
 
-    conn = get_connection()
-    cursor = conn.cursor()
+        return {
+            "users": users
+        }
 
-    cursor.execute("""
-        SELECT customer_id,
-               customer_name,
-               email,
-               role,
-               can_delete
-        FROM customers
-        ORDER BY customer_id
-    """)
+    except HTTPException:
+        raise
 
-    rows = cursor.fetchall()
+    except psycopg2.Error as e:
 
-    cursor.close()
-    conn.close()
+        logger.error(
+            f"Database error while retrieving admin users: "
+            f"error={str(e)}",
+            exc_info=True
+        )
 
-    users = []
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve users"
+        )
 
-    for row in rows:
+    except Exception as e:
 
-        users.append({
-            "customer_id": row[0],
-            "customer_name": row[1],
-            "email": row[2],
-            "role": row[3],
-            "can_delete": row[4]
-        })
+        logger.error(
+            f"Unexpected error while retrieving admin users: "
+            f"error={str(e)}",
+            exc_info=True
+        )
 
-    return {
-        "users": users
-    }
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -838,12 +1517,14 @@ def send_otp_email(receiver_email, otp):
 
     message = EmailMessage()
 
-    message["Subject"] = "Customer Management System - Password Reset OTP"
+    message["Subject"] = (
+        "Customer Management System - Password Reset OTP"
+    )
+
     message["From"] = SENDER_EMAIL
     message["To"] = receiver_email
 
-    message.set_content(
-        f"""Hello,
+    message.set_content(f"""Hello,
 
 Your password reset OTP is:
 
@@ -854,12 +1535,14 @@ This OTP is valid for 5 minutes.
 If you did not request a password reset, you can ignore this email.
 
 Customer Management System
-"""
-    )
+""")
 
     try:
 
-        print("Connecting to Gmail SMTP server...")
+        logger.info(
+            f"Connecting to Gmail SMTP server for "
+            f"recipient={receiver_email}"
+        )
 
         with smtplib.SMTP(
             SMTP_SERVER,
@@ -867,48 +1550,69 @@ Customer Management System
             timeout=30
         ) as server:
 
+            logger.info(
+                "Starting TLS connection with Gmail SMTP server"
+            )
+
             server.ehlo()
-
-            print("Starting TLS...")
-
             server.starttls()
-
             server.ehlo()
 
-            print("Logging into Gmail...")
+            logger.info(
+                "Authenticating with Gmail SMTP server"
+            )
 
             server.login(
                 SENDER_EMAIL,
                 SENDER_PASSWORD
             )
 
-            print("Sending OTP email...")
+            logger.info(
+                f"Sending OTP email to recipient={receiver_email}"
+            )
 
             server.send_message(message)
 
-        print("OTP email sent successfully.")
+        logger.info(
+            f"OTP email sent successfully to "
+            f"recipient={receiver_email}"
+        )
 
-    except smtplib.SMTPAuthenticationError:
+    except smtplib.SMTPAuthenticationError as e:
 
-        print("Gmail authentication failed.")
+        logger.error(
+            f"Gmail SMTP authentication failed for "
+            f"recipient={receiver_email}: {str(e)}",
+            exc_info=True
+        )
 
         raise HTTPException(
             status_code=500,
-            detail="Gmail authentication failed. Check your Gmail App Password."
+            detail="Gmail authentication failed. "
+                   "Check your Gmail App Password."
         )
 
     except smtplib.SMTPException as e:
 
-        print("SMTP error:", str(e))
+        logger.error(
+            f"SMTP error while sending OTP email to "
+            f"recipient={receiver_email}: {str(e)}",
+            exc_info=True
+        )
 
         raise HTTPException(
             status_code=500,
-            detail="Unable to send OTP email. SMTP error occurred."
+            detail="Unable to send OTP email. "
+                   "SMTP error occurred."
         )
 
     except Exception as e:
 
-        print("Email sending failed:", str(e))
+        logger.error(
+            f"Unexpected error while sending OTP email to "
+            f"recipient={receiver_email}: {str(e)}",
+            exc_info=True
+        )
 
         raise HTTPException(
             status_code=500,
@@ -921,59 +1625,134 @@ Customer Management System
 # =========================================================
 
 @app.post("/forgot-password")
-def forgot_password(request: ForgotPasswordRequest):
+def forgot_password(
+    request: ForgotPasswordRequest
+):
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT customer_id
-        FROM customers
-        WHERE email = %s
-    """, (request.email,))
-
-    user = cursor.fetchone()
-
-    if user is None:
-
-        cursor.close()
-        conn.close()
-
-        return {
-            "message": "If the email exists, an OTP has been sent."
-        }
-
-    # Generate 6-digit OTP
-    otp = str(secrets.randbelow(900000) + 100000)
-
-    # OTP valid for 5 minutes
-    expiry = datetime.now() + timedelta(minutes=5)
-
-    cursor.execute("""
-        UPDATE customers
-        SET reset_otp = %s,
-            reset_otp_expiry = %s
-        WHERE customer_id = %s
-    """, (
-        otp,
-        expiry,
-        user[0]
-    ))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    # Send OTP
-    send_otp_email(
-        request.email,
-        otp
+    logger.info(
+        f"Forgot password attempt: email={request.email}"
     )
 
-    return {
-        "message": "OTP sent successfully to your email."
-    }
+    conn = None
+    cursor = None
+
+    try:
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id
+            FROM customers
+            WHERE email = %s
+        """, (request.email,))
+
+        user = cursor.fetchone()
+
+        if user is None:
+
+            logger.warning(
+                f"Forgot password requested for "
+                f"non-existing email: {request.email}"
+            )
+
+            return {
+                "message": "If the email exists, an OTP has been sent."
+            }
+
+        otp = str(
+            secrets.randbelow(900000) + 100000
+        )
+
+        expiry = datetime.now() + timedelta(minutes=5)
+
+        cursor.execute("""
+            UPDATE customers
+            SET reset_otp = %s,
+                reset_otp_expiry = %s
+            WHERE customer_id = %s
+        """, (
+            otp,
+            expiry,
+            user[0]
+        ))
+
+        conn.commit()
+
+        logger.info(
+            f"Password reset OTP generated and stored: "
+            f"customer_id={user[0]}, "
+            f"email={request.email}"
+        )
+
+        send_otp_email(
+            request.email,
+            otp
+        )
+
+        logger.info(
+            f"Password reset OTP email sent successfully: "
+            f"email={request.email}"
+        )
+
+        return {
+            "message": "OTP sent successfully to your email."
+        }
+
+    except HTTPException:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"OTP email sending failed: "
+            f"email={request.email}",
+            exc_info=True
+        )
+
+        raise
+
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error during forgot password: "
+            f"email={request.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process password reset request"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error during forgot password: "
+            f"email={request.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -981,92 +1760,190 @@ def forgot_password(request: ForgotPasswordRequest):
 # =========================================================
 
 @app.post("/reset-password")
-def reset_password(request: ResetPasswordRequest):
+def reset_password(
+    request: ResetPasswordRequest
+):
 
-    if not request.otp.isdigit() or len(request.otp) != 6:
-
-        raise HTTPException(
-            status_code=400,
-            detail="OTP must be a 6-digit number"
-        )
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT customer_id
-        FROM customers
-        WHERE email = %s
-          AND reset_otp = %s
-          AND reset_otp_expiry > %s
-    """, (
-        request.email,
-        request.otp,
-        datetime.now()
-    ))
-
-    user = cursor.fetchone()
-
-    if user is None:
-
-        cursor.close()
-        conn.close()
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or expired OTP"
-        )
-
-    hashed_password = password_hash.hash(
-        request.new_password
+    logger.info(
+        f"Password reset attempt: email={request.email}"
     )
 
-    cursor.execute("""
-        UPDATE customers
-        SET password = %s,
-            reset_otp = NULL,
-            reset_otp_expiry = NULL
-        WHERE customer_id = %s
-    """, (
-        hashed_password,
-        user[0]
-    ))
+    conn = None
+    cursor = None
 
-    conn.commit()
+    try:
 
-    cursor.close()
-    conn.close()
+        if not request.otp.isdigit() or len(request.otp) != 6:
 
-    return {
-        "message": "Password changed successfully."
-    }
-from fastapi.responses import FileResponse
+            logger.warning(
+                f"Password reset failed - invalid OTP format: "
+                f"email={request.email}"
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="OTP must be a 6-digit number"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id
+            FROM customers
+            WHERE email = %s
+              AND reset_otp = %s
+              AND reset_otp_expiry > %s
+        """, (
+            request.email,
+            request.otp,
+            datetime.now()
+        ))
+
+        user = cursor.fetchone()
+
+        if user is None:
+
+            logger.warning(
+                f"Password reset failed - invalid or expired OTP: "
+                f"email={request.email}"
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OTP"
+            )
+
+        hashed_password = password_hash.hash(
+            request.new_password
+        )
+
+        cursor.execute("""
+            UPDATE customers
+            SET password = %s,
+                reset_otp = NULL,
+                reset_otp_expiry = NULL
+            WHERE customer_id = %s
+        """, (
+            hashed_password,
+            user[0]
+        ))
+
+        conn.commit()
+
+        logger.info(
+            f"Password reset successful: "
+            f"customer_id={user[0]}, "
+            f"email={request.email}"
+        )
+
+        return {
+            "message": "Password changed successfully."
+        }
+
+    except HTTPException:
+
+        if conn:
+            conn.rollback()
+
+        raise
+
+    except psycopg2.Error as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Database error during password reset: "
+            f"email={request.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to reset password"
+        )
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error during password reset: "
+            f"email={request.email}, "
+            f"error={str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+# =========================================================
+# FRONTEND PAGE ROUTES
+# =========================================================
 
 @app.get("/")
 def home():
-    return FileResponse("../frontend/login.html")
+    logger.info("Home page requested")
+
+    return FileResponse(
+        "../frontend/index.html"
+    )
 
 
 @app.get("/login.html")
 def login_page():
-    return FileResponse("../frontend/login.html")
+    logger.info("Login page requested")
+
+    return FileResponse(
+        "../frontend/login.html"
+    )
 
 
 @app.get("/register.html")
 def register_page():
-    return FileResponse("../frontend/register.html")
+    logger.info("Register page requested")
+
+    return FileResponse(
+        "../frontend/register.html"
+    )
 
 
 @app.get("/forgot-password.html")
 def forgot_password_page():
-    return FileResponse("../frontend/forgot-password.html")
+    logger.info("Forgot password page requested")
+
+    return FileResponse(
+        "../frontend/forgot-password.html"
+    )
 
 
 @app.get("/reset-password.html")
 def reset_password_page():
-    return FileResponse("../frontend/reset-password.html")
+    logger.info("Reset password page requested")
+
+    return FileResponse(
+        "../frontend/reset-password.html"
+    )
 
 
 @app.get("/index.html")
 def index_page():
-    return FileResponse("../frontend/index.html")
+    logger.info("Index page requested")
+
+    return FileResponse(
+        "../frontend/index.html"
+    )
