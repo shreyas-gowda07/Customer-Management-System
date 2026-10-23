@@ -10,6 +10,8 @@ from pwdlib import PasswordHash
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 import secrets
+import hashlib
+import hmac
 import smtplib
 from email.message import EmailMessage
 from log import logger
@@ -115,6 +117,13 @@ class RegisterUser(BaseModel):
 class LoginUser(BaseModel):
     email: EmailStr
     password: str
+
+class RequestLoginOTP(BaseModel):
+    email:EmailStr
+
+class VerifyLoginOTP(BaseModel):
+    email: EmailStr
+    otp: str    
 
 
 class LoginRequest(BaseModel):
@@ -1245,6 +1254,372 @@ def login_user(user: LoginUser):
         if conn:
             conn.close()
 
+# =========================================================
+# EMAIL OTP LOGIN
+# =========================================================
+
+def send_login_otp_email(receiver_email, otp):
+
+    message = EmailMessage()
+
+    message["Subject"] = "Customer Management System - Login OTP"
+    message["From"] = SENDER_EMAIL
+    message["To"] = receiver_email
+
+    message.set_content(f"""Hello,
+
+Your login OTP is:
+
+{otp}
+
+This OTP is valid for 5 minutes.
+
+If you did not request this OTP, you can ignore this email.
+
+Customer Management System
+""")
+
+    try:
+        with smtplib.SMTP(
+            SMTP_SERVER,
+            SMTP_PORT,
+            timeout=30
+        ) as server:
+
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+
+            server.login(
+                SENDER_EMAIL,
+                SENDER_PASSWORD
+            )
+
+            server.send_message(message)
+
+        logger.info(
+            f"Login OTP email sent to {receiver_email}"
+        )
+
+    except Exception as e:
+
+        logger.error(
+            f"Unable to send login OTP email: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to send login OTP email"
+        )
+
+
+# =========================================================
+# REQUEST LOGIN OTP
+# =========================================================
+
+@app.post("/login-otp/request")
+def request_login_otp(request: RequestLoginOTP):
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id,
+                   login_otp_last_sent
+            FROM customers
+            WHERE LOWER(email) = LOWER(%s)
+        """, (request.email,))
+
+        user = cursor.fetchone()
+
+        # Generic response for an email that does not exist
+        if user is None:
+
+            logger.warning(
+                f"Login OTP requested for unknown email: "
+                f"{request.email}"
+            )
+
+            return {
+                "message": "If the email exists, an OTP has been sent."
+            }
+
+        customer_id = user[0]
+        last_sent = user[1]
+
+        # Allow only one OTP request per 60 seconds
+        if last_sent is not None:
+
+            elapsed_seconds = (
+                datetime.now() - last_sent
+            ).total_seconds()
+
+            if elapsed_seconds < 60:
+
+                raise HTTPException(
+                    status_code=429,
+                    detail="Please wait before requesting another OTP"
+                )
+
+        # Generate a 6-digit OTP
+        otp = str(
+            secrets.randbelow(900000) + 100000
+        )
+
+        # Store a hash instead of the original OTP
+        otp_hash = hashlib.sha256(
+            otp.encode()
+        ).hexdigest()
+
+        expiry = datetime.now() + timedelta(minutes=5)
+
+        cursor.execute("""
+            UPDATE customers
+            SET login_otp_hash = %s,
+                login_otp_expiry = %s,
+                login_otp_attempts = 0,
+                login_otp_last_sent = %s
+            WHERE customer_id = %s
+        """, (
+            otp_hash,
+            expiry,
+            datetime.now(),
+            customer_id
+        ))
+
+        conn.commit()
+
+        # Send OTP using the existing SMTP configuration
+        send_login_otp_email(
+            request.email,
+            otp
+        )
+
+        logger.info(
+            f"Login OTP requested successfully for "
+            f"customer_id={customer_id}"
+        )
+
+        return {
+            "message": "If the email exists, an OTP has been sent."
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Error requesting login OTP: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process login OTP request"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+# =========================================================
+# VERIFY LOGIN OTP
+# =========================================================
+
+@app.post("/login-otp/verify")
+def verify_login_otp(request: VerifyLoginOTP):
+
+    conn = None
+    cursor = None
+
+    try:
+
+        # Validate OTP format
+        if not request.otp.isdigit() or len(request.otp) != 6:
+
+            raise HTTPException(
+                status_code=400,
+                detail="OTP must be a 6-digit number"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT customer_id,
+                   customer_name,
+                   country,
+                   email,
+                   role,
+                   can_delete,
+                   login_otp_hash,
+                   login_otp_expiry,
+                   login_otp_attempts
+            FROM customers
+            WHERE LOWER(email) = LOWER(%s)
+        """, (request.email,))
+
+        row = cursor.fetchone()
+
+        if row is None:
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or OTP"
+            )
+
+        stored_otp_hash = row[6]
+        otp_expiry = row[7]
+        otp_attempts = row[8]
+
+        # Check whether an OTP was requested
+        if stored_otp_hash is None or otp_expiry is None:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Please request a login OTP first"
+            )
+
+        # Maximum 5 verification attempts
+        if otp_attempts >= 5:
+
+            raise HTTPException(
+                status_code=429,
+                detail="Too many OTP attempts. Request a new OTP."
+            )
+
+        # Check expiry
+        if datetime.now() > otp_expiry:
+
+            cursor.execute("""
+                UPDATE customers
+                SET login_otp_hash = NULL,
+                    login_otp_expiry = NULL,
+                    login_otp_attempts = 0
+                WHERE customer_id = %s
+            """, (row[0],))
+
+            conn.commit()
+
+            raise HTTPException(
+                status_code=400,
+                detail="OTP has expired. Please request a new OTP."
+            )
+
+        # Hash the entered OTP
+        entered_otp_hash = hashlib.sha256(
+            request.otp.encode()
+        ).hexdigest()
+
+        # Compare hashes securely
+        if not hmac.compare_digest(
+            entered_otp_hash,
+            stored_otp_hash
+        ):
+
+            cursor.execute("""
+                UPDATE customers
+                SET login_otp_attempts = login_otp_attempts + 1
+                WHERE customer_id = %s
+            """, (row[0],))
+
+            conn.commit()
+
+            logger.warning(
+                f"Incorrect login OTP for "
+                f"customer_id={row[0]}"
+            )
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or OTP"
+            )
+
+        # OTP is valid. Consume it so it cannot be reused.
+        cursor.execute("""
+            UPDATE customers
+            SET login_otp_hash = NULL,
+                login_otp_expiry = NULL,
+                login_otp_attempts = 0
+            WHERE customer_id = %s
+        """, (row[0],))
+
+        conn.commit()
+
+        # Create JWT using the same settings as password login
+        token_data = {
+            "customer_id": row[0],
+            "email": row[3],
+            "role": row[4],
+            "can_delete": row[5],
+            "exp": datetime.utcnow() + timedelta(minutes=15)
+        }
+
+        access_token = jwt.encode(
+            token_data,
+            SECRET_KEY,
+            algorithm=ALGORITHM
+        )
+
+        logger.info(
+            f"OTP login successful: {request.email}"
+        )
+
+        return {
+            "message": "Login successful",
+            "access_token": access_token,
+            "customer": {
+                "customer_id": row[0],
+                "customer_name": row[1],
+                "country": row[2],
+                "email": row[3],
+                "role": row[4]
+            }
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+
+    except Exception as e:
+
+        if conn:
+            conn.rollback()
+
+        logger.error(
+            f"Unexpected error during OTP login: {str(e)}",
+            exc_info=True
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process OTP login"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 # =========================================================
 # ADMIN / SUPER ADMIN

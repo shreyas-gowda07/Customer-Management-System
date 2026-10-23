@@ -1,150 +1,362 @@
+
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Customer Management System</title>
+    <link rel="stylesheet" href="style.css">
 
-```
-<title>Login - Customer Management System</title>
+    <style>
+       
+.login-options {
+    display: flex;
+    gap: 12px;
+    margin: 22px 0;
+}
 
-<link rel="stylesheet" href="style.css">
-```
+.login-options button {
+    flex: 1;
+    min-height: 46px;
+    padding: 12px 10px;
+    border: 1px solid #2563eb;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #2563eb;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
 
+.login-options button.active {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.login-options button:hover {
+    background: #1d4ed8;
+    color: #ffffff;
+}
+
+.login-options button:focus-visible,
+.login-card form button:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 2px;
+}
+
+.login-card form button {
+    width: 100%;
+    min-height: 46px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.login-card form button:hover {
+    background: #1d4ed8;
+}
+
+.login-card form button:active {
+    transform: scale(0.98);
+}
+
+.login-card form button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.otp-section {
+    display: none;
+}
+
+.otp-section input {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.otp-section button {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+#loginMessage {
+    overflow-wrap: anywhere;
+}
+
+    </style>
 </head>
 
 <body class="login-page">
+    <div class="login-card">
+        <h1>Welcome Back</h1>
+        <p>Login to Customer Management System</p>
 
-```
-<div class="login-card">
+        <div class="login-options">
+            <button type="button" id="passwordTab" class="active"
+                onclick="showLoginMode('password')">
+                Password Login
+            </button>
 
-    <h1>Welcome Back</h1>
+            <button type="button" id="otpTab"
+                onclick="showLoginMode('otp')">
+                Email OTP Login
+            </button>
+        </div>
 
-    <p>Login to Customer Management System</p>
+        <!-- EXISTING PASSWORD LOGIN -->
+        <form id="loginForm">
+            <input
+                type="email"
+                id="email"
+                placeholder="Enter your email"
+                autocomplete="email"
+                required
+            >
 
-    <form id="loginForm">
+            <input
+                type="password"
+                id="password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+                required
+            >
 
-        <input
-            type="email"
-            id="email"
-            placeholder="Enter your email"
-            required
-        >
+            <button type="submit" id="passwordLoginButton">
+                Login
+            </button>
+        </form>
 
-        <input
-            type="password"
-            id="password"
-            placeholder="Enter your password"
-            required
-        >
+        <!-- EMAIL OTP LOGIN -->
+        <div id="otpSection" class="otp-section">
+            <form id="requestOtpForm">
+                <input
+                    type="email"
+                    id="otpEmail"
+                    placeholder="Enter your registered email"
+                    autocomplete="email"
+                    required
+                >
 
-        <button type="submit">
-            Login
-        </button>
+                <button type="submit" id="requestOtpButton">
+                    Send OTP
+                </button>
+            </form>
 
-    </form>
+            <form id="verifyOtpForm" style="display: none;">
+                <input
+                    type="text"
+                    id="otpCode"
+                    placeholder="Enter the 6-digit OTP"
+                    inputmode="numeric"
+                    pattern="[0-9]{6}"
+                    maxlength="6"
+                    autocomplete="one-time-code"
+                    required
+                >
 
-    <p id="loginMessage"></p>
+                <button type="submit" id="verifyOtpButton">
+                    Verify OTP and Login
+                </button>
 
-    <a href="register.html">
-        Create New Account
-    </a>
+                <button type="button" onclick="resetOtpForm()">
+                    Use a different email
+                </button>
+            </form>
+        </div>
 
-    <br>
+        <p id="loginMessage" role="status" aria-live="polite"></p>
 
-    <a href="forgot-password.html">
-        Forgot Password?
-    </a>
+        <a href="register.html">Create New Account</a>
+        <br>
+        <a href="forgot-password.html">Forgot Password?</a>
+    </div>
 
-</div>
+    <script>
+        // Keep your laptop's IP address; remove the accidental space.
+        const API_URL = "http://192.168.0.70:8000";
 
-<script>
+        const message = document.getElementById("loginMessage");
+        let requestedOtpEmail = "";
 
-    const API_URL = "http://127.0.0.1:8000";
+        function showMessage(text, success = false) {
+            message.textContent = text;
+            message.style.color = success ? "green" : "red";
+        }
 
-    document.getElementById("loginForm").addEventListener(
-        "submit",
-        async function(event) {
+        function showLoginMode(mode) {
+            const useOtp = mode === "otp";
 
-            event.preventDefault();
+            document.getElementById("loginForm").style.display =
+                useOtp ? "none" : "block";
 
-            const email =
-                document.getElementById("email").value;
+            document.getElementById("otpSection").style.display =
+                useOtp ? "block" : "none";
 
-            const password =
-                document.getElementById("password").value;
+            document.getElementById("passwordTab").classList.toggle(
+                "active", !useOtp
+            );
 
-            const message =
-                document.getElementById("loginMessage");
+            document.getElementById("otpTab").classList.toggle(
+                "active", useOtp
+            );
+
+            // Prevent hidden password inputs from blocking OTP form submission.
+            document.getElementById("email").required = !useOtp;
+            document.getElementById("password").required = !useOtp;
+
+            showMessage("");
+        }
+
+        function resetOtpForm() {
+            requestedOtpEmail = "";
+            document.getElementById("requestOtpForm").style.display = "block";
+            document.getElementById("verifyOtpForm").style.display = "none";
+            document.getElementById("otpCode").value = "";
+            showMessage("");
+        }
+
+        async function postJson(path, payload) {
+            const response = await fetch(`${API_URL}${path}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const text = await response.text();
+            let data = {};
 
             try {
+                data = text ? JSON.parse(text) : {};
+            } catch {
+                data = { detail: text || "Unexpected server response." };
+            }
 
-                const response = await fetch(
-                    `${API_URL}/login`,
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-
-                        body: JSON.stringify({
-                            email: email,
-                            password: password
-                        })
-                    }
+            if (!response.ok) {
+                throw new Error(
+                    data.detail || data.message || `Request failed (${response.status}).`
                 );
+            }
 
-                const data = await response.json();
+            return data;
+        }
 
-                if (!response.ok) {
+        function finishLogin(data) {
+            if (!data.access_token || !data.customer) {
+                throw new Error(
+                    "Login response is missing access_token or customer. Check the verify endpoint response in Swagger."
+                );
+            }
 
-                    message.textContent =
-                        data.detail || "Login failed";
+            localStorage.setItem("access_token", data.access_token);
+            localStorage.setItem("customer", JSON.stringify(data.customer));
 
-                    message.style.color = "red";
+            showMessage("Login successful! Opening dashboard...", true);
 
+            setTimeout(() => {
+                window.location.href = "index.html";
+            }, 500);
+        }
+
+        // EXISTING PASSWORD LOGIN
+        document.getElementById("loginForm").addEventListener(
+            "submit",
+            async function(event) {
+                event.preventDefault();
+
+                const button = document.getElementById("passwordLoginButton");
+                button.disabled = true;
+                showMessage("Checking login details...", true);
+
+                try {
+                    const data = await postJson("/login", {
+                        email: document.getElementById("email").value.trim(),
+                        password: document.getElementById("password").value
+                    });
+
+                    finishLogin(data);
+                } catch (error) {
+                    showMessage(error.message || "Unable to connect to server.");
+                } finally {
+                    button.disabled = false;
+                }
+            }
+        );
+
+        // REQUEST EMAIL OTP
+        document.getElementById("requestOtpForm").addEventListener(
+            "submit",
+            async function(event) {
+                event.preventDefault();
+
+                const email = document.getElementById("otpEmail").value.trim();
+                const button = document.getElementById("requestOtpButton");
+
+                button.disabled = true;
+                showMessage("Requesting OTP...", true);
+
+                try {
+                    const data = await postJson("/login-otp/request", {
+                        email: email
+                    });
+
+                    requestedOtpEmail = email;
+
+                    document.getElementById("requestOtpForm").style.display = "none";
+                    document.getElementById("verifyOtpForm").style.display = "block";
+
+                    showMessage(
+                        data.message || "OTP requested. Check your email.",
+                        true
+                    );
+                } catch (error) {
+                    showMessage(error.message || "Unable to request OTP.");
+                } finally {
+                    button.disabled = false;
+                }
+            }
+        );
+
+        // VERIFY OTP AND LOGIN
+        document.getElementById("verifyOtpForm").addEventListener(
+            "submit",
+            async function(event) {
+                event.preventDefault();
+
+                const otp = document.getElementById("otpCode").value.trim();
+                const button = document.getElementById("verifyOtpButton");
+
+                if (!/^\d{6}$/.test(otp)) {
+                    showMessage("Enter the 6-digit OTP from your email.");
                     return;
                 }
 
-                localStorage.setItem(
-                    "access_token",
-                    data.access_token
-                );
+                button.disabled = true;
+                showMessage("Verifying OTP...", true);
 
-                localStorage.setItem(
-                    "customer",
-                    JSON.stringify(data.customer)
-                );
+                try {
+                    const data = await postJson("/login-otp/verify", {
+                        email: requestedOtpEmail,
+                        otp: otp
+                    });
 
-                message.textContent =
-                    "Login successful!";
-
-                message.style.color = "green";
-
-                setTimeout(function() {
-
-                    window.location.href = "index.html";
-
-                }, 500);
-
-            } catch (error) {
-
-                console.error(error);
-
-                message.textContent =
-                    "Unable to connect to server.";
-
-                message.style.color = "red";
+                    finishLogin(data);
+                } catch (error) {
+                    showMessage(error.message || "OTP verification failed.");
+                } finally {
+                    button.disabled = false;
+                }
             }
-
-        }
-    );
-
-</script>
-```
-
+        );
+    </script>
 </body>
-
 </html>
