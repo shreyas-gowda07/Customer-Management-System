@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -44,11 +43,6 @@ SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 
 app = FastAPI()
 
-app.mount(
-    "/static",
-    StaticFiles(directory="../frontend"),
-    name="static"
-)
 
 
 app.add_middleware(
@@ -81,7 +75,7 @@ security = HTTPBearer()
 def get_connection():
 
     return psycopg2.connect(
-        host="localhost",
+        host="host.docker.internal",
         database="postgres",
         user="postgres",
         password=os.getenv("DB_PASSWORD"),
@@ -1186,7 +1180,8 @@ def login_user(user: LoginUser):
             "customer_id": row[0],
             "email": row[3],
             "role": database_role,
-            "can_delete": row[6]
+            "can_delete": row[6],
+            "exp": datetime.utcnow() + timedelta(minutes=15)
         }
 
         access_token = jwt.encode(
@@ -1891,59 +1886,3 @@ def reset_password(
             conn.close()
 
 
-# =========================================================
-# FRONTEND PAGE ROUTES
-# =========================================================
-
-@app.get("/")
-def home():
-    logger.info("Home page requested")
-
-    return FileResponse(
-        "../frontend/index.html"
-    )
-
-
-@app.get("/login.html")
-def login_page():
-    logger.info("Login page requested")
-
-    return FileResponse(
-        "../frontend/login.html"
-    )
-
-
-@app.get("/register.html")
-def register_page():
-    logger.info("Register page requested")
-
-    return FileResponse(
-        "../frontend/register.html"
-    )
-
-
-@app.get("/forgot-password.html")
-def forgot_password_page():
-    logger.info("Forgot password page requested")
-
-    return FileResponse(
-        "../frontend/forgot-password.html"
-    )
-
-
-@app.get("/reset-password.html")
-def reset_password_page():
-    logger.info("Reset password page requested")
-
-    return FileResponse(
-        "../frontend/reset-password.html"
-    )
-
-
-@app.get("/index.html")
-def index_page():
-    logger.info("Index page requested")
-
-    return FileResponse(
-        "../frontend/index.html"
-    )

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Management | CustomerHub</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dashboard-page">
+<div class="dashboard-container">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">C</div>
+            <div>
+                <h2>CustomerHub</h2>
+                <p>Customer Management</p>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <p class="nav-heading">MAIN MENU</p>
+            <a class="nav-link" href="index.html">
+                <span class="nav-icon">▦</span> Dashboard
+            </a>
+            <a class="nav-link active" href="customers.html">
+                <span class="nav-icon">♙</span> Customer Management
+            </a>
+            <a class="nav-link" href="index.html#countryChartSection">
+                <span class="nav-icon">▥</span> Country Analytics
+            </a>
+            <a class="nav-link logout-link" href="login.html" id="logoutLink">
+                <span class="nav-icon">↪</span> Logout
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="status-dot"></span>
+            <span>CustomerHub is ready</span>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <header class="topbar">
+            <div class="page-heading">
+                <p class="breadcrumb">Home / Customer Management</p>
+                <h1>Customer Management</h1>
+                <p class="welcome-text">Add, view, search, and update customer records.</p>
+            </div>
+
+            <div class="profile-area">
+                <div class="profile-avatar" id="profileAvatar">U</div>
+                <div class="profile-info">
+                    <strong id="profileName">User</strong>
+                    <span id="profileRole">user</span>
+                </div>
+                <button class="profile-logout" id="profileLogout"
+                        type="button" title="Logout" aria-label="Logout">↪</button>
+            </div>
+        </header>
+
+        <div class="message-box" id="pageMessage" role="status" aria-live="polite"></div>
+
+        <section class="panel customers-panel">
+            <div class="panel-header customers-heading">
+                <div>
+                    <h2>Customer Records</h2>
+                    <p>Manage customer information using your existing API.</p>
+                </div>
+                <button class="secondary-button" id="refreshButton" type="button">
+                    Refresh List
+                </button>
+            </div>
+
+            <section class="form-section" id="addSection">
+                <h3>Add Customer</h3>
+                <form id="addCustomerForm" class="customer-form">
+                    <div class="form-field">
+                        <label for="newCustomerName">Customer Name</label>
+                        <input id="newCustomerName" name="customer_name"
+                               maxlength="150" required placeholder="Enter full name">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="newCustomerCountry">Country</label>
+                        <input id="newCustomerCountry" name="country"
+                               required placeholder="Enter country">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="newCustomerEmail">Email</label>
+                        <input id="newCustomerEmail" name="email"
+                               type="email" required placeholder="name@example.com">
+                    </div>
+
+                    <div class="form-field">
+                        <label for="newCustomerPassword">Temporary Password</label>
+                        <input id="newCustomerPassword" name="password"
+                               type="password" minlength="8" required
+                               autocomplete="new-password"
+                               placeholder="Set an initial password">
+                    </div>
+
+                    <div class="form-field" id="newRoleField">
+                        <label for="newCustomerRole">Role</label>
+                        <select id="newCustomerRole" name="role">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="form-action">
+                        <button class="primary-button" type="submit">Add Customer</button>
+                        <button class="secondary-button" type="reset">Clear Form</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="form-section" id="editSection">
+                <h3>Find and Update Customer</h3>
+                <form id="searchCustomerForm" class="customer-form search-form">
+                    <div class="form-field">
+                        <label for="searchCustomerId">Customer ID</label>
+                        <input id="searchCustomerId" type="number" min="1"
+                               step="1" required placeholder="Enter customer ID">
+                    </div>
+                    <div class="form-action">
+                        <button class="accent-button" type="submit">Find Customer</button>
+                        <button class="secondary-button" id="clearEditButton"
+                                type="button">Clear</button>
+                    </div>
+                </form>
+
+                <form id="updateCustomerForm" class="customer-form" hidden>
+                    <div class="form-field">
+                        <label for="editCustomerName">Customer Name</label>
+                        <input id="editCustomerName" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="editCustomerCountry">Country</label>
+                        <input id="editCustomerCountry" required>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="editCustomerEmail">Email</label>
+                        <input id="editCustomerEmail" type="email" required>
+                    </div>
+
+                    <div class="form-action">
+                        <button class="primary-button" type="submit">Save Changes</button>
+                        <button class="secondary-button" id="cancelEditButton"
+                                type="button">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="table-section">
+                <div class="table-heading">
+                    <div>
+                        <h3>Customer List</h3>
+                        <p>Records currently returned by the server.</p>
+                    </div>
+                    <span class="record-count" id="recordCount">0 records</span>
+                </div>
+
+                <div class="table-responsive" id="customerList">
+                    <table id="customersTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Country</th>
+                                <th>Email</th>
+                                <th id="actionsHeader">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customersTableBody">
+                            <tr><td colspan="5" class="empty-cell">Loading customers...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="delete-section" id="deleteSection">
+                <div>
+                    <h3>Delete Customer</h3>
+                    <p>Deleting a customer permanently removes the record. This action cannot be undone.</p>
+                </div>
+                <form id="deleteCustomerForm" class="delete-controls">
+                    <input id="deleteCustomerId" type="number" min="1" step="1"
+                           required placeholder="Customer ID">
+                    <button class="danger-button" type="submit">Delete Customer</button>
+                </form>
+            </section>
+        </section>
+
+        <footer class="dashboard-footer">
+            <p>CustomerHub · Customer Management System</p>
+            <p>Customer records</p>
+        </footer>
+    </main>
+</div>
+
+<script>
+    const API_URL = "http://127.0.0.1:8000";
+    const token = localStorage.getItem("access_token");
+
+    let currentCustomer = {};
+    let customersCache = [];
+
+    try {
+        currentCustomer = JSON.parse(localStorage.getItem("customer") || "{}");
+    } catch {
+        currentCustomer = {};
+    }
+
+    if (!token) {
+        window.location.replace("login.html");
+    }
+
+    const role = String(currentCustomer.role || "user").toLowerCase();
+    const currentId = Number(currentCustomer.customer_id);
+    const isAdmin = role === "admin" || role === "super-admin";
+
+    function logout() {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("customer");
+        window.location.replace("login.html");
+    }
+
+    document.getElementById("logoutLink").addEventListener("click", logout);
+    document.getElementById("profileLogout").addEventListener("click", logout);
+
+    const displayName = currentCustomer.customer_name || currentCustomer.email || "User";
+    document.getElementById("profileName").textContent = displayName;
+    document.getElementById("profileRole").textContent = role;
+    document.getElementById("profileAvatar").textContent =
+        displayName.trim().charAt(0).toUpperCase() || "U";
+
+    // Only admins and super-admins may add or delete customer records.
+    if (!isAdmin) {
+        document.getElementById("addSection").hidden = true;
+        document.getElementById("deleteSection").hidden = true;
+    }
+
+    // A regular user can update only their own account.
+    // Admins can select any customer.
+    const messageBox = document.getElementById("pageMessage");
+
+    function showMessage(message, type = "info") {
+        messageBox.textContent = message;
+        messageBox.className = `message-box ${type}`;
+        messageBox.style.display = "block";
+    }
+
+    function clearMessage() {
+        messageBox.textContent = "";
+        messageBox.className = "message-box";
+        messageBox.style.display = "none";
+    }
+
+    async function apiRequest(path, options = {}) {
+        const headers = {
+            "Authorization": `Bearer ${token}`,
+            ...(options.body ? { "Content-Type": "application/json" } : {}),
+            ...(options.headers || {})
+        };
+
+        const response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers
+        });
+
+        let result = {};
+        const responseText = await response.text();
+
+        if (responseText) {
+            try {
+                result = JSON.parse(responseText);
+            } catch {
+                result = { detail: responseText };
+            }
+        }
+
+        if (response.status === 401) {
+            logout();
+            throw new Error("Your session has expired. Please log in again.");
+        }
+
+        if (!response.ok) {
+            throw new Error(result.detail || result.message || `Request failed (${response.status})`);
+        }
+
+        return result;
+    }
+
+    function makeCell(value) {
+        const cell = document.createElement("td");
+        cell.textContent = value ?? "";
+        return cell;
+    }
+
+    function renderCustomers(customers) {
+        const tbody = document.getElementById("customersTableBody");
+        tbody.replaceChildren();
+
+        document.getElementById("recordCount").textContent =
+            `${customers.length} record${customers.length === 1 ? "" : "s"}`;
+
+        if (customers.length === 0) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.className = "empty-cell";
+            cell.textContent = "No customers found.";
+            row.appendChild(cell);
+            tbody.appendChild(row);
+            return;
+        }
+
+        customers.forEach(customer => {
+            const row = document.createElement("tr");
+            row.append(
+                makeCell(customer.customer_id),
+                makeCell(customer.customer_name),
+                makeCell(customer.country),
+                makeCell(customer.email)
+            );
+
+            const actionsCell = document.createElement("td");
+            const actions = document.createElement("div");
+            actions.className = "table-actions";
+
+            const canEdit = isAdmin || Number(customer.customer_id) === currentId;
+
+            if (canEdit) {
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.className = "table-button edit-table-button";
+                editButton.textContent = "Edit";
+                editButton.addEventListener("click", () => {
+                    document.getElementById("searchCustomerId").value = customer.customer_id;
+                    fillEditForm(customer);
+                    document.getElementById("editSection").scrollIntoView({
+                        behavior: "smooth",
+                        block: "start"
+                    });
+                });
+                actions.appendChild(editButton);
+            }
+
+            if (isAdmin) {
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.className = "table-button delete-table-button";
+                deleteButton.textContent = "Delete";
+                deleteButton.addEventListener("click", () => deleteCustomer(customer.customer_id));
+                actions.appendChild(deleteButton);
+            }
+
+            if (!canEdit && !isAdmin) {
+                actionsCell.textContent = "—";
+            } else {
+                actionsCell.appendChild(actions);
+            }
+
+            row.appendChild(actionsCell);
+            tbody.appendChild(row);
+        });
+    }
+
+    async function loadCustomers() {
+        clearMessage();
+        const tbody = document.getElementById("customersTableBody");
+        tbody.innerHTML =
+            '<tr><td colspan="5" class="empty-cell">Loading customers...</td></tr>';
+
+        try {
+            const result = await apiRequest("/customers");
+            customersCache = result.customers || [];
+            renderCustomers(customersCache);
+        } catch (error) {
+            tbody.innerHTML = "";
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.className = "empty-cell";
+            cell.textContent = error.message;
+            row.appendChild(cell);
+            tbody.appendChild(row);
+            document.getElementById("recordCount").textContent = "Unavailable";
+            showMessage(error.message, "error");
+        }
+    }
+
+    document.getElementById("refreshButton").addEventListener("click", loadCustomers);
+
+    document.getElementById("addCustomerForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        clearMessage();
+
+        if (!isAdmin) {
+            showMessage("Only Admin or Super-Admin can add customers.", "error");
+            return;
+        }
+
+        const payload = {
+            customer_name: document.getElementById("newCustomerName").value.trim(),
+            country: document.getElementById("newCustomerCountry").value.trim(),
+            email: document.getElementById("newCustomerEmail").value.trim(),
+            password: document.getElementById("newCustomerPassword").value,
+            role: document.getElementById("newCustomerRole").value
+        };
+
+        try {
+            const result = await apiRequest("/customers", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+
+            event.target.reset();
+            showMessage(result.message || "Customer added successfully.", "success");
+            await loadCustomers();
+        } catch (error) {
+            showMessage(error.message, "error");
+        }
+    });
+
+    function fillEditForm(customer) {
+        if (!isAdmin && Number(customer.customer_id) !== currentId) {
+            showMessage("You can update only your own account.", "error");
+            return;
+        }
+
+        document.getElementById("searchCustomerId").value = customer.customer_id;
+        document.getElementById("editCustomerName").value = customer.customer_name || "";
+        document.getElementById("editCustomerCountry").value = customer.country || "";
+        document.getElementById("editCustomerEmail").value = customer.email || "";
+        document.getElementById("updateCustomerForm").hidden = false;
+        clearMessage();
+    }
+
+    document.getElementById("searchCustomerForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        clearMessage();
+
+        const id = Number(document.getElementById("searchCustomerId").value);
+
+        if (!Number.isInteger(id) || id < 1) {
+            showMessage("Enter a valid customer ID.", "error");
+            return;
+        }
+
+        if (!isAdmin && id !== currentId) {
+            showMessage("You can view and update only your own customer record through this form.", "error");
+            return;
+        }
+
+        try {
+            const customer = await apiRequest(`/customers/${id}`);
+            fillEditForm(customer);
+            showMessage("Customer found. You can now edit the fields.", "success");
+        } catch (error) {
+            document.getElementById("updateCustomerForm").hidden = true;
+            showMessage(error.message, "error");
+        }
+    });
+
+    document.getElementById("updateCustomerForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        clearMessage();
+
+        const id = Number(document.getElementById("searchCustomerId").value);
+
+        if (!Number.isInteger(id) || id < 1) {
+            showMessage("Find a valid customer before saving.", "error");
+            return;
+        }
+
+        if (!isAdmin && id !== currentId) {
+            showMessage("You can update only your own account.", "error");
+            return;
+        }
+
+        const payload = {
+            customer_name: document.getElementById("editCustomerName").value.trim(),
+            country: document.getElementById("editCustomerCountry").value.trim(),
+            email: document.getElementById("editCustomerEmail").value.trim()
+        };
+
+        try {
+            const result = await apiRequest(`/customers/${id}`, {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+
+            showMessage(result.message || "Customer updated successfully.", "success");
+            document.getElementById("updateCustomerForm").hidden = true;
+            await loadCustomers();
+
+            // Refresh local account details if the logged-in user updated themselves.
+            if (id === currentId && result.customer) {
+                const updatedCustomer = {
+                    ...currentCustomer,
+                    ...result.customer,
+                    role
+                };
+                localStorage.setItem("customer", JSON.stringify(updatedCustomer));
+                currentCustomer = updatedCustomer;
+                document.getElementById("profileName").textContent =
+                    updatedCustomer.customer_name || updatedCustomer.email || "User";
+                document.getElementById("profileAvatar").textContent =
+                    (updatedCustomer.customer_name || updatedCustomer.email || "U")
+                        .trim().charAt(0).toUpperCase();
+            }
+        } catch (error) {
+            showMessage(error.message, "error");
+        }
+    });
+
+    function clearEditForm() {
+        document.getElementById("searchCustomerId").value = "";
+        document.getElementById("updateCustomerForm").reset();
+        document.getElementById("updateCustomerForm").hidden = true;
+        clearMessage();
+    }
+
+    document.getElementById("clearEditButton").addEventListener("click", clearEditForm);
+    document.getElementById("cancelEditButton").addEventListener("click", clearEditForm);
+
+    async function deleteCustomer(id) {
+        if (!isAdmin) {
+            showMessage("Only Admin or Super-Admin can delete customers.", "error");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to permanently delete customer ID ${id}?`)) {
+            return;
+        }
+
+        try {
+            const result = await apiRequest(`/customers/${id}`, {
+                method: "DELETE"
+            });
+
+            showMessage(result.message || "Customer deleted successfully.", "success");
+            await loadCustomers();
+        } catch (error) {
+            showMessage(error.message, "error");
+        }
+    }
+
+    document.getElementById("deleteCustomerForm").addEventListener("submit", async event => {
+        event.preventDefault();
+
+        const id = Number(document.getElementById("deleteCustomerId").value);
+
+        if (!Number.isInteger(id) || id < 1) {
+            showMessage("Enter a valid customer ID.", "error");
+            return;
+        }
+
+        await deleteCustomer(id);
+        event.target.reset();
+    });
+
+    loadCustomers();
+</script>
+</body>
+</html>

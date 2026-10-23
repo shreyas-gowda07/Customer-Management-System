@@ -1,1302 +1,268 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Customer Management System</title>
-
+    <title>Dashboard | CustomerHub</title>
     <link rel="stylesheet" href="style.css">
-
 </head>
-
 <body class="dashboard-page">
-
-<div class="container">
-
-
-    <!-- =========================================
-         HEADER
-    ========================================== -->
-
-    <div class="header">
-
-        <h1>Customer Management System</h1>
-
-    </div>
-
-
-    <!-- =========================================
-         PROFILE BUTTON
-         SEPARATE FROM HEADER
-    ========================================== -->
-
-    <div class="profile-container">
-
-        <button
-            type="button"
-            class="profile-button"
-            onclick="toggleProfile()"
-            aria-label="Profile"
-        >
-            👤
-        </button>
-
-
-        <!-- =====================================
-             PROFILE DROPDOWN
-        ====================================== -->
-
-        <div
-            id="profileDropdown"
-            class="profile-dropdown"
-        >
-
-            <div class="profile-item">
-
-                <span>Name</span>
-
-                <strong id="profileName">
-                    User
-                </strong>
-
+<div class="dashboard-container">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">C</div>
+            <div>
+                <h2>CustomerHub</h2>
+                <p>Customer Management</p>
             </div>
-
-
-            <div class="profile-item">
-
-                <span>Role</span>
-
-                <strong id="profileRole">
-                    User
-                </strong>
-
-            </div>
-
-
-            <button
-                type="button"
-                class="profile-logout"
-                onclick="logout()"
-            >
-                Logout
-            </button>
-
         </div>
 
-    </div>
-
-
-
-    <!-- =========================================
-         ADD CUSTOMER
-    ========================================== -->
-
-    <div class="card">
-
-        <h2>Add Customer</h2>
-
-
-        <input
-            type="text"
-            id="addName"
-            placeholder="Customer Name"
-        >
-
-
-        <input
-            type="text"
-            id="addCountry"
-            placeholder="Country"
-        >
-
-
-        <input
-            type="email"
-            id="addEmail"
-            placeholder="Email"
-        >
-
-
-        <input
-            type="password"
-            id="addPassword"
-            placeholder="Password"
-        >
-
-
-        <select id="addRole">
-
-            <option value="user">
-                User
-            </option>
-
-            <option value="admin">
-                Admin
-            </option>
-
-        </select>
-
-
-        <button
-            type="button"
-            onclick="addCustomer()"
-        >
-            Add Customer
-        </button>
-
-
-        <p id="addMessage"></p>
-
-    </div>
-
-
-
-    <!-- =========================================
-         FIND CUSTOMER
-    ========================================== -->
-
-    <div class="card">
-
-        <h2>Find Customer</h2>
-
-
-        <input
-            type="number"
-            id="findId"
-            placeholder="Customer ID"
-        >
-
-
-        <button
-            type="button"
-            onclick="findCustomer()"
-        >
-            Find Customer
-        </button>
-
-
-        <div id="findResult"></div>
-
-    </div>
-
-
-
-    <!-- =========================================
-         UPDATE CUSTOMER
-    ========================================== -->
-
-    <div class="card">
-
-        <h2>Update Customer</h2>
-
-
-        <input
-            type="number"
-            id="updateId"
-            placeholder="Customer ID"
-        >
-
-
-        <input
-            type="text"
-            id="updateName"
-            placeholder="New Customer Name"
-        >
-
-
-        <input
-            type="email"
-            id="updateEmail"
-            placeholder="New Email"
-        >
-
-
-        <input
-            type="text"
-            id="updateCountry"
-            placeholder="Country"
-        >
-
-
-        <button
-            type="button"
-            onclick="updateCustomer()"
-        >
-            Update Customer
-        </button>
-
-
-        <p id="updateMessage"></p>
-
-    </div>
-
-
-
-    <!-- =========================================
-         PATCH CUSTOMER
-    ========================================== -->
-
-    <div class="card">
-
-        <h2>Change Country</h2>
-
-
-        <input
-            type="number"
-            id="patchId"
-            placeholder="Customer ID"
-        >
-
-
-        <input
-            type="text"
-            id="patchCountry"
-            placeholder="New Country"
-        >
-
-
-        <button
-            type="button"
-            onclick="patchCustomer()"
-        >
-            Change Country
-        </button>
-
-
-        <p id="patchMessage"></p>
-
-    </div>
-
-
-
-    <!-- =========================================
-         DELETE CUSTOMER
-    ========================================== -->
-
-    <div
-        class="card"
-        id="deleteSection"
-    >
-
-        <h2>Delete Customer</h2>
-
-
-        <input
-            type="number"
-            id="deleteId"
-            placeholder="Customer ID"
-        >
-
-
-        <button
-            type="button"
-            onclick="deleteCustomer()"
-            class="delete-button"
-        >
-            Delete Customer
-        </button>
-
-
-        <p id="deleteMessage"></p>
-
-    </div>
-
-
-
-    <!-- =========================================
-         ALL CUSTOMERS
-    ========================================== -->
-
-    <div class="card">
-
-        <h2>All Customers</h2>
-
-
-        <button
-            type="button"
-            onclick="getCustomers()"
-        >
-            Refresh Customers
-        </button>
-
-
-        <div id="customersTable"></div>
-
-    </div>
-
-
-</div>
-
-
-
-<!-- =========================================
-     JAVASCRIPT
-========================================== -->
-
-<script>
-
-const API_URL = "http://127.0.0.1:8000";
-
-
-// ==========================================
-// GET JWT TOKEN
-// ==========================================
-
-function getToken() {
-
-    return localStorage.getItem("access_token");
-
-}
-
-
-// ==========================================
-// CHECK LOGIN
-// ==========================================
-
-const customerData =
-    localStorage.getItem("customer");
-
-const token =
-    getToken();
-
-
-if (!customerData || !token) {
-
-    localStorage.removeItem("customer");
-
-    localStorage.removeItem("access_token");
-
-    window.location.href = "login.html";
-
-}
-else {
-
-    const customer =
-        JSON.parse(customerData);
-
-
-    // ======================================
-    // SHOW PROFILE NAME
-    // ======================================
-
-    const profileName =
-        document.getElementById("profileName");
-
-    const profileRole =
-        document.getElementById("profileRole");
-
-
-    if (profileName) {
-
-        profileName.textContent =
-            customer.customer_name || "User";
-
-    }
-
-
-    if (profileRole) {
-
-        profileRole.textContent =
-            customer.role || "user";
-
-    }
-
-
-    // ======================================
-    // HIDE DELETE FOR NORMAL USERS
-    // ======================================
-
-    if (customer.role === "user") {
-
-        const deleteSection =
-            document.getElementById("deleteSection");
-
-        if (deleteSection) {
-
-            deleteSection.style.display = "none";
-
-        }
-
-    }
-
-}
-
-
-
-// ==========================================
-// TOGGLE PROFILE DROPDOWN
-// ==========================================
-
-function toggleProfile() {
-
-    const dropdown =
-        document.getElementById("profileDropdown");
-
-
-    if (!dropdown) {
-
-        return;
-
-    }
-
-
-    dropdown.classList.toggle("show");
-
-}
-
-
-
-// ==========================================
-// CLOSE PROFILE WHEN CLICKING OUTSIDE
-// ==========================================
-
-document.addEventListener(
-    "click",
-    function(event) {
-
-        const profileContainer =
-            document.querySelector(".profile-container");
-
-
-        const dropdown =
-            document.getElementById("profileDropdown");
-
-
-        if (
-            profileContainer &&
-            dropdown &&
-            !profileContainer.contains(event.target)
-        ) {
-
-            dropdown.classList.remove("show");
-
-        }
-
-    }
-);
-
-
-
-// ==========================================
-// LOGOUT
-// ==========================================
-
-function logout() {
-
-    localStorage.removeItem("customer");
-
-    localStorage.removeItem("access_token");
-
-    window.location.href = "login.html";
-
-}
-
-
-
-// ==========================================
-// ADD CUSTOMER
-// POST = CREATE CUSTOMER
-// ==========================================
-
-async function addCustomer() {
-
-    const customer_name =
-        document.getElementById("addName").value.trim();
-
-
-    const country =
-        document.getElementById("addCountry").value.trim();
-
-
-    const email =
-        document.getElementById("addEmail").value.trim();
-
-
-    const password =
-        document.getElementById("addPassword").value;
-
-
-    const role =
-        document.getElementById("addRole").value;
-
-
-    const token =
-        getToken();
-
-
-    if (
-        !customer_name ||
-        !country ||
-        !email ||
-        !password
-    ) {
-
-        document.getElementById(
-            "addMessage"
-        ).textContent =
-            "Please fill all customer details.";
-
-        document.getElementById(
-            "addMessage"
-        ).style.color =
-            "red";
-
-        return;
-
-    }
-
-
-    if (!token) {
-
-        document.getElementById(
-            "addMessage"
-        ).textContent =
-            "You are not logged in.";
-
-        document.getElementById(
-            "addMessage"
-        ).style.color =
-            "red";
-
-        return;
-
-    }
-
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers`,
-                {
-
-                    method: "POST",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/json",
-
-                        "Authorization":
-                            `Bearer ${token}`
-
-                    },
-
-                    body: JSON.stringify({
-
-                        customer_name:
-                            customer_name,
-
-                        country:
-                            country,
-
-                        email:
-                            email,
-
-                        password:
-                            password,
-
-                        role:
-                            role
-
-                    })
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        console.log(
-            "Add Customer Response:",
-            data
-        );
-
-
-        if (!response.ok) {
-
-            document.getElementById(
-                "addMessage"
-            ).textContent =
-                data.detail ||
-                "Failed to add customer.";
-
-            document.getElementById(
-                "addMessage"
-            ).style.color =
-                "red";
-
-            return;
-
-        }
-
-
-        document.getElementById(
-            "addMessage"
-        ).textContent =
-            "Customer added successfully! Customer ID: " +
-            data.customer_id;
-
-
-        document.getElementById(
-            "addMessage"
-        ).style.color =
-            "green";
-
-
-        document.getElementById(
-            "addName"
-        ).value = "";
-
-
-        document.getElementById(
-            "addCountry"
-        ).value = "";
-
-
-        document.getElementById(
-            "addEmail"
-        ).value = "";
-
-
-        document.getElementById(
-            "addPassword"
-        ).value = "";
-
-
-        document.getElementById(
-            "addRole"
-        ).value = "user";
-
-
-        getCustomers();
-
-    }
-
-
-    catch (error) {
-
-        console.error(
-            "Add Customer Error:",
-            error
-        );
-
-
-        document.getElementById(
-            "addMessage"
-        ).textContent =
-            "Couldn't connect to FastAPI.";
-
-
-        document.getElementById(
-            "addMessage"
-        ).style.color =
-            "red";
-
-    }
-
-}
-
-
-
-// ==========================================
-// FIND CUSTOMER
-// GET = READ ONE CUSTOMER
-// ==========================================
-
-async function findCustomer() {
-
-    const id =
-        document.getElementById("findId").value;
-
-
-    if (!id) {
-
-        document.getElementById(
-            "findResult"
-        ).textContent =
-            "Please enter a Customer ID.";
-
-        return;
-
-    }
-
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers/${id}`,
-                {
-
-                    method: "GET",
-
-                    headers: {
-
-                        "Authorization":
-                            `Bearer ${getToken()}`
-
-                    }
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (response.ok) {
-
-            document.getElementById(
-                "findResult"
-            ).innerHTML = `
-
-                <div class="result">
-
-                    <p>
-                        <strong>ID:</strong>
-                        ${data.customer_id}
-                    </p>
-
-                    <p>
-                        <strong>Name:</strong>
-                        ${data.customer_name}
-                    </p>
-
-                    <p>
-                        <strong>Country:</strong>
-                        ${data.country}
-                    </p>
-
-                    <p>
-                        <strong>Email:</strong>
-                        ${data.email || "Not registered"}
-                    </p>
-
+        <nav class="sidebar-nav">
+            <p class="nav-heading">MAIN MENU</p>
+            <a class="nav-link active" href="index.html">
+                <span class="nav-icon">▦</span> Dashboard
+            </a>
+            <a class="nav-link" href="customers.html">
+                <span class="nav-icon">♙</span> Customer Management
+            </a>
+            <a class="nav-link" href="#countryChartSection">
+                <span class="nav-icon">▥</span> Country Analytics
+            </a>
+            <a class="nav-link logout-link" href="login.html" id="logoutLink">
+                <span class="nav-icon">↪</span> Logout
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="status-dot"></span>
+            <span>CustomerHub is ready</span>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <header class="topbar">
+            <div class="page-heading">
+                <p class="breadcrumb">Home / Dashboard</p>
+                <h1>Dashboard Overview</h1>
+                <p class="welcome-text" id="welcomeText">
+                    Welcome back! Here is your customer overview.
+                </p>
+            </div>
+
+            <div class="profile-area">
+                <div class="profile-avatar" id="profileAvatar">U</div>
+                <div class="profile-info">
+                    <strong id="profileName">User</strong>
+                    <span id="profileRole">user</span>
+                </div>
+                <button class="profile-logout" id="profileLogout"
+                        type="button" title="Logout" aria-label="Logout">↪</button>
+            </div>
+        </header>
+
+        <div class="message-box" id="dashboardMessage" role="status"></div>
+
+        <section class="summary-grid">
+            <article class="summary-card">
+                <div class="summary-top">
+                    <span class="summary-label">TOTAL CUSTOMERS</span>
+                    <span class="summary-icon">♙</span>
+                </div>
+                <h2 id="totalCustomers">—</h2>
+                <p>Customer records in the database</p>
+            </article>
+
+            <article class="summary-card country-card">
+                <div class="summary-top">
+                    <span class="summary-label">COUNTRIES</span>
+                    <span class="summary-icon">◎</span>
+                </div>
+                <h2 id="totalCountries">—</h2>
+                <p>Countries represented in your records</p>
+            </article>
+
+            <article class="summary-card admin-card">
+                <div class="summary-top">
+                    <span class="summary-label">YOUR ROLE</span>
+                    <span class="summary-icon">♜</span>
+                </div>
+                <h2 id="currentRole">—</h2>
+                <p>Your current account access level</p>
+            </article>
+        </section>
+
+        <section class="dashboard-panels" id="countryChartSection">
+            <article class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Customers by Country</h2>
+                        <p>Distribution of customer records by country</p>
+                    </div>
+                    <span class="panel-badge">Analytics</span>
+                </div>
+                <div class="bar-chart" id="countryChart">
+                    <p class="empty-state">Loading country analytics...</p>
+                </div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Quick Overview</h2>
+                        <p>Shortcuts and account information</p>
+                    </div>
                 </div>
 
-            `;
+                <div class="overview-item">
+                    <div class="overview-icon green-icon">♙</div>
+                    <div>
+                        <strong>Customer records</strong>
+                        <p>View and manage customer information.</p>
+                    </div>
+                </div>
 
-        }
-        else {
+                <div class="overview-item">
+                    <div class="overview-icon purple-icon">♜</div>
+                    <div>
+                        <strong>Account role</strong>
+                        <p id="roleDescription">Loading account details...</p>
+                    </div>
+                </div>
 
-            document.getElementById(
-                "findResult"
-            ).textContent =
-                data.detail ||
-                "Customer not found.";
+                <div class="overview-item">
+                    <div class="overview-icon orange-icon">↗</div>
+                    <div>
+                        <strong>Customer Management</strong>
+                        <p><a href="customers.html">Open customer management →</a></p>
+                    </div>
+                </div>
+            </article>
+        </section>
 
-        }
+        <footer class="dashboard-footer">
+            <p>CustomerHub · Customer Management System</p>
+            <p>Dashboard overview</p>
+        </footer>
+    </main>
+</div>
 
-    }
+<script>
+    const API_URL = "http://127.0.0.1:8000";
+    const token = localStorage.getItem("access_token");
 
-
-    catch (error) {
-
-        console.error(error);
-
-        document.getElementById(
-            "findResult"
-        ).textContent =
-            "Cannot connect to FastAPI.";
-
-    }
-
-}
-
-
-
-// ==========================================
-// UPDATE CUSTOMER
-// PUT = UPDATE
-// ==========================================
-
-async function updateCustomer() {
-
-    const id =
-        document.getElementById("updateId").value;
-
-
-    const name =
-        document.getElementById("updateName").value;
-
-
-    const email =
-        document.getElementById("updateEmail").value;
-
-
-    const country =
-        document.getElementById("updateCountry").value;
-
-
-    if (!id || !name || !email || !country) {
-
-        document.getElementById(
-            "updateMessage"
-        ).textContent =
-            "Please enter ID, name, email and country.";
-
-        return;
-
-    }
-
-
+    let currentCustomer = {};
     try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers/${id}`,
-                {
-
-                    method: "PUT",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/json",
-
-                        "Authorization":
-                            `Bearer ${getToken()}`
-
-                    },
-
-                    body: JSON.stringify({
-
-                        customer_name:
-                            name,
-
-                        email:
-                            email,
-
-                        country:
-                            country
-
-                    })
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (response.ok) {
-
-            document.getElementById(
-                "updateMessage"
-            ).textContent =
-                data.message ||
-                "Customer updated successfully.";
-
-
-            document.getElementById(
-                "updateId"
-            ).value = "";
-
-
-            document.getElementById(
-                "updateName"
-            ).value = "";
-
-
-            document.getElementById(
-                "updateEmail"
-            ).value = "";
-
-
-            document.getElementById(
-                "updateCountry"
-            ).value = "";
-
-
-            getCustomers();
-
-        }
-        else {
-
-            document.getElementById(
-                "updateMessage"
-            ).textContent =
-                data.detail ||
-                "Failed to update customer.";
-
-        }
-
+        currentCustomer = JSON.parse(localStorage.getItem("customer") || "{}");
+    } catch {
+        currentCustomer = {};
     }
 
-
-    catch (error) {
-
-        console.error(error);
-
-        document.getElementById(
-            "updateMessage"
-        ).textContent =
-            "Cannot connect to FastAPI.";
-
+    if (!token) {
+        window.location.replace("login.html");
     }
 
-}
-
-
-
-// ==========================================
-// PATCH CUSTOMER
-// ==========================================
-
-async function patchCustomer() {
-
-    const id =
-        document.getElementById("patchId").value;
-
-
-    const country =
-        document.getElementById("patchCountry").value;
-
-
-    if (!id || !country) {
-
-        document.getElementById(
-            "patchMessage"
-        ).textContent =
-            "Please enter Customer ID and new country.";
-
-        return;
-
+    function logout() {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("customer");
+        window.location.replace("login.html");
     }
 
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers/${id}`,
-                {
-
-                    method: "PATCH",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/json",
-
-                        "Authorization":
-                            `Bearer ${getToken()}`
-
-                    },
-
-                    body: JSON.stringify({
-
-                        country:
-                            country
-
-                    })
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (response.ok) {
-
-            document.getElementById(
-                "patchMessage"
-            ).textContent =
-                data.message ||
-                "Country updated successfully.";
-
-
-            document.getElementById(
-                "patchId"
-            ).value = "";
-
-
-            document.getElementById(
-                "patchCountry"
-            ).value = "";
-
-
-            getCustomers();
-
-        }
-        else {
-
-            document.getElementById(
-                "patchMessage"
-            ).textContent =
-                data.detail ||
-                "Failed to change country.";
-
-        }
-
-    }
-
-
-    catch (error) {
-
-        console.error(error);
-
-        document.getElementById(
-            "patchMessage"
-        ).textContent =
-            "Cannot connect to FastAPI.";
-
-    }
-
-}
-
-
-
-// ==========================================
-// DELETE CUSTOMER
-// ==========================================
-
-async function deleteCustomer() {
-
-    const id =
-        document.getElementById("deleteId").value;
-
-
-    if (!id) {
-
-        document.getElementById(
-            "deleteMessage"
-        ).textContent =
-            "Please enter Customer ID.";
-
-        return;
-
-    }
-
-
-    if (
-        !confirm(
-            "Are you sure you want to delete this customer?"
-        )
-    ) {
-
-        return;
-
-    }
-
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers/${id}`,
-                {
-
-                    method: "DELETE",
-
-                    headers: {
-
-                        "Authorization":
-                            `Bearer ${getToken()}`
-
-                    }
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (response.ok) {
-
-            document.getElementById(
-                "deleteMessage"
-            ).textContent =
-                data.message;
-
-
-            document.getElementById(
-                "deleteId"
-            ).value = "";
-
-
-            getCustomers();
-
-        }
-        else {
-
-            document.getElementById(
-                "deleteMessage"
-            ).textContent =
-                data.detail ||
-                "Failed to delete customer.";
-
-        }
-
-    }
-
-
-    catch (error) {
-
-        console.error(error);
-
-        document.getElementById(
-            "deleteMessage"
-        ).textContent =
-            "Cannot connect to FastAPI.";
-
-    }
-
-}
-
-
-
-// ==========================================
-// GET ALL CUSTOMERS
-// ==========================================
-
-async function getCustomers() {
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_URL}/customers`,
-                {
-
-                    method: "GET",
-
-                    headers: {
-
-                        "Authorization":
-                            `Bearer ${getToken()}`
-
-                    }
-
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (!response.ok) {
-
-            document.getElementById(
-                "customersTable"
-            ).textContent =
-                data.detail ||
-                "Failed to load customers.";
-
-            return;
-
-        }
-
-
-        let html = `
-
-            <table>
-
-                <thead>
-
-                    <tr>
-
-                        <th>ID</th>
-
-                        <th>Name</th>
-
-                        <th>Country</th>
-
-                        <th>Email</th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-        `;
-
-
-        data.customers.forEach(
-            function(customer) {
-
-                html += `
-
-                    <tr>
-
-                        <td>
-                            ${customer.customer_id}
-                        </td>
-
-                        <td>
-                            ${customer.customer_name}
-                        </td>
-
-                        <td>
-                            ${customer.country}
-                        </td>
-
-                        <td>
-                            ${customer.email || "Not registered"}
-                        </td>
-
-                    </tr>
-
-                `;
-
+    document.getElementById("logoutLink").addEventListener("click", logout);
+    document.getElementById("profileLogout").addEventListener("click", logout);
+
+    const role = String(currentCustomer.role || "user").toLowerCase();
+    const displayName = currentCustomer.customer_name || currentCustomer.email || "User";
+
+    document.getElementById("profileName").textContent = displayName;
+    document.getElementById("profileRole").textContent = role;
+    document.getElementById("profileAvatar").textContent =
+        displayName.trim().charAt(0).toUpperCase() || "U";
+    document.getElementById("currentRole").textContent = role;
+    document.getElementById("roleDescription").textContent =
+        role === "super-admin" ? "Super-Admin access" :
+        role === "admin" ? "Administrator access" :
+        "Standard user access";
+
+    async function loadDashboard() {
+        const message = document.getElementById("dashboardMessage");
+
+        try {
+            const response = await fetch(`${API_URL}/customers`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            if (response.status === 401) {
+                logout();
+                return;
             }
-        );
 
+            const result = await response.json();
 
-        html += `
+            if (!response.ok) {
+                throw new Error(result.detail || "Unable to load dashboard data.");
+            }
 
-                </tbody>
+            // The API returns an object: { customers: [...] }
+            const customers = result.customers || [];
 
-            </table>
+            document.getElementById("totalCustomers").textContent = customers.length;
 
-        `;
+            const countryCounts = {};
+            customers.forEach(customer => {
+                const country = (customer.country || "Unknown").trim() || "Unknown";
+                countryCounts[country] = (countryCounts[country] || 0) + 1;
+            });
 
+            const countries = Object.entries(countryCounts)
+                .sort((a, b) => b[1] - a[1]);
 
-        document.getElementById(
-            "customersTable"
-        ).innerHTML =
-            html;
+            document.getElementById("totalCountries").textContent = countries.length;
 
+            const chart = document.getElementById("countryChart");
+            chart.replaceChildren();
+
+            if (countries.length === 0) {
+                chart.innerHTML = '<p class="empty-state">No customer records found.</p>';
+                return;
+            }
+
+            const maxCount = Math.max(...countries.map(item => item[1]));
+
+            countries.slice(0, 10).forEach(([country, count]) => {
+                const row = document.createElement("div");
+                row.className = "bar-row";
+
+                const label = document.createElement("span");
+                label.className = "bar-label";
+                label.textContent = country;
+                label.title = country;
+
+                const track = document.createElement("div");
+                track.className = "bar-track";
+
+                const fill = document.createElement("div");
+                fill.className = "bar-fill";
+                fill.style.width = `${(count / maxCount) * 100}%`;
+                track.appendChild(fill);
+
+                const value = document.createElement("span");
+                value.className = "bar-value";
+                value.textContent = count;
+
+                row.append(label, track, value);
+                chart.appendChild(row);
+            });
+
+        } catch (error) {
+            message.textContent = error.message;
+            message.className = "message-box error";
+            message.style.display = "block";
+            document.getElementById("countryChart").innerHTML =
+                '<p class="empty-state">Country analytics could not be loaded.</p>';
+        }
     }
 
-
-    catch (error) {
-
-        console.error(error);
-
-        document.getElementById(
-            "customersTable"
-        ).textContent =
-            "Cannot connect to FastAPI.";
-
-    }
-
-}
-
-
-
-// ==========================================
-// LOAD CUSTOMERS
-// ==========================================
-
-getCustomers();
-
+    loadDashboard();
 </script>
-
 </body>
-
 </html>
