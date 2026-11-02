@@ -1,0 +1,305 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Activity Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+    body {
+        min-height: 100vh;
+        margin: 0;
+        padding: 1px 20px;
+        font-family: Arial, sans-serif;
+
+        background:
+            linear-gradient(
+                rgba(244, 247, 251, 0.45),
+                rgba(244, 247, 251, 0.60)
+            ),
+            url("admin-bg.jpg") center center / cover no-repeat fixed;
+    }
+
+    
+.audit-container {
+    max-width: 1200px;
+    margin: 35px auto;
+    padding: 25px;
+
+    /* Glass effect */
+    background: rgba(255, 255, 255, 0.30);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
+
+    overflow-x: auto;
+}
+
+
+        .audit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .audit-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .audit-actions button,
+        .audit-actions a {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            background: #365b45;
+            color: white;
+            font-size: 14px;
+        }
+
+        .audit-filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .audit-filters select {
+            padding: 9px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+       
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 850px;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.audit-table th,
+.audit-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+    text-align: left;
+    font-size: 14px;
+}
+
+.audit-table th {
+    background: rgba(54, 91, 69, 0.65);
+    color: white;
+}
+
+.audit-table td {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+
+        .audit-status-success {
+            color: #187443;
+            font-weight: bold;
+        }
+
+        .audit-status-failed {
+            color: #bd3030;
+            font-weight: bold;
+        }
+
+        #audit-message {
+            margin: 15px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="audit-container">
+        <div class="audit-header">
+            <div>
+                <h1>Admin Activity Dashboard</h1>
+                <p>Review customer management system audit records.</p>
+            </div>
+
+            <div class="audit-actions">
+                <a href="index.html">Back to Dashboard</a>
+                <button onclick="loadAuditLogs()">Refresh Logs</button>
+            </div>
+        </div>
+
+        <div class="audit-filters">
+            <select id="status-filter" onchange="renderAuditLogs()">
+                <option value="ALL">All Statuses</option>
+                <option value="SUCCESS">Successful</option>
+                <option value="FAILED">Failed</option>
+            </select>
+
+            <select id="action-filter" onchange="renderAuditLogs()">
+                <option value="ALL">All Actions</option>
+            </select>
+        </div>
+
+        <p id="audit-message">Loading audit logs...</p>
+
+        <table class="audit-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Actor ID</th>
+                    <th>Actor Email</th>
+                    <th>Action</th>
+                    <th>Target ID</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="audit-table-body"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        let allAuditLogs = [];
+
+        async function loadAuditLogs() {
+            const message = document.getElementById("audit-message");
+            const token = localStorage.getItem("access_token");
+
+            if (!token) {
+                message.textContent = "Please log in first.";
+                return;
+            }
+
+            message.textContent = "Loading audit logs...";
+
+            try {
+                const response = await fetch(
+                    `${API_URL}/admin/audit-logs`,
+                    {
+                        headers: {
+                            "Authorization": `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        message.textContent =
+                            "Your session may have expired. Please log in again.";
+                    } else if (response.status === 403) {
+                        message.textContent =
+                            "Access denied. An admin role is required.";
+                    } else {
+                        message.textContent =
+                            `Unable to load audit logs (${response.status}).`;
+                    }
+                    return;
+                }
+
+                const data = await response.json();
+                allAuditLogs = data.audit_logs || [];
+
+                populateActionFilter();
+                renderAuditLogs();
+
+            } catch (error) {
+                console.error("Audit log error:", error);
+                message.textContent =
+                    "Could not connect to the backend. Check that it is running.";
+            }
+        }
+
+        function populateActionFilter() {
+            const select = document.getElementById("action-filter");
+            const previousValue = select.value;
+
+            const actions = [
+                ...new Set(allAuditLogs.map(log => log.action).filter(Boolean))
+            ].sort();
+
+            select.innerHTML = '<option value="ALL">All Actions</option>';
+
+            actions.forEach(action => {
+                const option = document.createElement("option");
+                option.value = action;
+                option.textContent = action;
+                select.appendChild(option);
+            });
+
+            if (actions.includes(previousValue)) {
+                select.value = previousValue;
+            }
+        }
+
+        function renderAuditLogs() {
+            const tbody = document.getElementById("audit-table-body");
+            const message = document.getElementById("audit-message");
+
+            tbody.replaceChildren();
+
+            const statusFilter =
+                document.getElementById("status-filter").value;
+            const actionFilter =
+                document.getElementById("action-filter").value;
+
+            const filteredLogs = allAuditLogs.filter(log => {
+                const matchesStatus =
+                    statusFilter === "ALL" || log.status === statusFilter;
+
+                const matchesAction =
+                    actionFilter === "ALL" || log.action === actionFilter;
+
+                return matchesStatus && matchesAction;
+            });
+
+            filteredLogs.forEach(log => {
+                const row = document.createElement("tr");
+
+                const values = [
+                    log.created_at
+                        ? new Date(log.created_at).toLocaleString()
+                        : "—",
+                    log.actor_customer_id ?? "—",
+                    log.actor_email ?? "—",
+                    log.action ?? "—",
+                    log.target_customer_id ?? "—",
+                    log.status ?? "—",
+                    log.details ?? "—"
+                ];
+
+                values.forEach((value, index) => {
+                    const cell = document.createElement("td");
+                    cell.textContent = value;
+
+                    if (index === 5) {
+                        cell.className =
+                            log.status === "SUCCESS"
+                                ? "audit-status-success"
+                                : "audit-status-failed";
+                    }
+
+                    row.appendChild(cell);
+                });
+
+                tbody.appendChild(row);
+            });
+
+            message.textContent =
+                `Showing ${filteredLogs.length} of ${allAuditLogs.length} audit records.`;
+        }
+
+        loadAuditLogs();
+    </script>
+</body>
+</html>

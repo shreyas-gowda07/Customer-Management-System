@@ -74,8 +74,8 @@ security = HTTPBearer()
 # DATABASE CONNECTION
 # =========================================================
 
-def get_connection():
 
+def get_connection():
     return psycopg2.connect(
         host="host.docker.internal",
         database="postgres",
@@ -84,6 +84,145 @@ def get_connection():
         port="5432"
     )
 
+
+def write_audit_log(
+    actor_customer_id=None,
+    actor_email=None,
+    action="",
+    target_customer_id=None,
+    status="SUCCESS",
+    details=None
+):
+    
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO audit_logs (
+                actor_customer_id,
+                actor_email,
+                action,
+                target_customer_id,
+                status,
+                details
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            actor_customer_id,
+            actor_email,
+            action,
+            target_customer_id,
+            status,
+            details
+        ))
+
+        conn.commit()
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("Failed to write audit log")
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+@app.get("/admin/audit-logs")
+def get_audit_logs(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    conn = None
+    cursor = None
+
+    try:
+        # Verify the logged-in user's token
+        token = credentials.credentials
+
+        try:
+            payload = jwt.decode(
+                token,
+                SECRET_KEY,
+                algorithms=[ALGORITHM]
+            )
+        except JWTError:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired token"
+            )
+
+        # Only admins and super-admins can view audit logs
+        role = payload.get("role")
+
+        if role not in ["admin", "super-admin"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to view audit logs"
+            )
+
+        # Retrieve the latest audit records
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                id,
+                actor_customer_id,
+                actor_email,
+                action,
+                target_customer_id,
+                status,
+                details,
+                created_at
+            FROM audit_logs
+            ORDER BY created_at DESC
+            LIMIT 500
+        """)
+
+        rows = cursor.fetchall()
+
+        audit_logs = []
+
+        for row in rows:
+            audit_logs.append({
+                "id": row[0],
+                "actor_customer_id": row[1],
+                "actor_email": row[2],
+                "action": row[3],
+                "target_customer_id": row[4],
+                "status": row[5],
+                "details": row[6],
+                "created_at": row[7]
+            })
+
+        return {
+            "total_records": len(audit_logs),
+            "audit_logs": audit_logs
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to retrieve audit logs")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve audit logs"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 # =========================================================
 # PYDANTIC MODELS
@@ -309,6 +448,7 @@ def get_customers(
 # GET ONE CUSTOMER
 # =========================================================
 
+
 @app.get("/customers/{customer_id}")
 def get_customer(
     customer_id: int,
@@ -339,17 +479,34 @@ def get_customer(
         row = cursor.fetchone()
 
         if row is None:
-
             logger.warning(
                 f"Get customer failed - customer not found: "
                 f"customer_id={customer_id}, "
                 f"requested by={current_user['email']}"
             )
 
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="GET_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Customer not found"
+            )
+
             raise HTTPException(
                 status_code=404,
                 detail="Customer not found"
             )
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="GET_CUSTOMER",
+            target_customer_id=customer_id,
+            status="SUCCESS",
+            details="Customer details retrieved successfully"
+        )
 
         logger.info(
             f"Customer retrieved successfully: "
@@ -368,6 +525,14 @@ def get_customer(
         raise
 
     except psycopg2.Error as e:
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="GET_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Database error while retrieving customer"
+        )
 
         logger.error(
             f"Database error while retrieving customer "
@@ -381,6 +546,14 @@ def get_customer(
         )
 
     except Exception as e:
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="GET_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Unexpected error while retrieving customer"
+        )
 
         logger.error(
             f"Unexpected error while retrieving customer "
@@ -394,7 +567,6 @@ def get_customer(
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
@@ -402,9 +574,11 @@ def get_customer(
             conn.close()
 
 
+
 # =========================================================
 # CREATE CUSTOMER
 # =========================================================
+
 
 @app.post("/customers")
 def create_customer(
@@ -419,12 +593,18 @@ def create_customer(
     cursor = None
 
     try:
-
         if current_user["role"] not in ["admin", "super-admin"]:
-
             logger.warning(
                 f"Create customer denied - insufficient permission: "
                 f"user={current_user['email']}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user["email"],
+                action="CREATE_CUSTOMER",
+                status="FAILED",
+                details="Permission denied: insufficient role"
             )
 
             raise HTTPException(
@@ -433,10 +613,17 @@ def create_customer(
             )
 
         if customer.role not in ["user", "admin"]:
-
             logger.warning(
                 f"Create customer failed - invalid role: "
                 f"role={customer.role}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user["email"],
+                action="CREATE_CUSTOMER",
+                status="FAILED",
+                details="Invalid role requested"
             )
 
             raise HTTPException(
@@ -447,9 +634,7 @@ def create_customer(
         conn = get_connection()
         cursor = conn.cursor()
 
-        hashed_password = password_hash.hash(
-            customer.password
-        )
+        hashed_password = password_hash.hash(customer.password)
 
         cursor.execute(
             """
@@ -475,8 +660,16 @@ def create_customer(
         )
 
         customer_id = cursor.fetchone()[0]
-
         conn.commit()
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user["email"],
+            action="CREATE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="SUCCESS",
+            details="Customer created successfully"
+        )
 
         logger.info(
             f"Customer created successfully: "
@@ -496,7 +689,6 @@ def create_customer(
         raise
 
     except psycopg2.errors.UniqueViolation:
-
         if conn:
             conn.rollback()
 
@@ -505,20 +697,34 @@ def create_customer(
             f"{customer.email}"
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user["email"],
+            action="CREATE_CUSTOMER",
+            status="FAILED",
+            details="Customer creation failed: email already exists"
+        )
+
         raise HTTPException(
             status_code=400,
             detail="Email already exists"
         )
 
     except psycopg2.Error as e:
-
         if conn:
             conn.rollback()
 
         logger.error(
-            f"Database error while creating customer: "
-            f"{str(e)}",
+            f"Database error while creating customer: {str(e)}",
             exc_info=True
+        )
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user["email"],
+            action="CREATE_CUSTOMER",
+            status="FAILED",
+            details="Customer creation failed due to a database error"
         )
 
         raise HTTPException(
@@ -527,14 +733,20 @@ def create_customer(
         )
 
     except Exception as e:
-
         if conn:
             conn.rollback()
 
         logger.error(
-            f"Unexpected error while creating customer: "
-            f"{str(e)}",
+            f"Unexpected error while creating customer: {str(e)}",
             exc_info=True
+        )
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user["email"],
+            action="CREATE_CUSTOMER",
+            status="FAILED",
+            details="Customer creation failed due to an unexpected error"
         )
 
         raise HTTPException(
@@ -543,7 +755,6 @@ def create_customer(
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
@@ -551,9 +762,11 @@ def create_customer(
             conn.close()
 
 
+
 # =========================================================
 # UPDATE CUSTOMER
 # =========================================================
+
 
 @app.put("/customers/{customer_id}")
 def update_customer(
@@ -571,16 +784,23 @@ def update_customer(
     cursor = None
 
     try:
-
         if (
             current_user["role"] == "user"
             and current_user["customer_id"] != customer_id
         ):
-
             logger.warning(
                 f"Update customer denied: "
                 f"user={current_user['email']} "
                 f"tried to update customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="UPDATE_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Permission denied: users can update only their own account"
             )
 
             raise HTTPException(
@@ -611,10 +831,18 @@ def update_customer(
         row = cursor.fetchone()
 
         if row is None:
-
             logger.warning(
                 f"Update customer failed - customer not found: "
                 f"customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="UPDATE_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Customer not found"
             )
 
             raise HTTPException(
@@ -623,6 +851,15 @@ def update_customer(
             )
 
         conn.commit()
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="UPDATE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="SUCCESS",
+            details="Customer updated successfully"
+        )
 
         logger.info(
             f"Customer updated successfully: "
@@ -646,7 +883,6 @@ def update_customer(
         raise
 
     except psycopg2.errors.UniqueViolation:
-
         if conn:
             conn.rollback()
 
@@ -656,13 +892,21 @@ def update_customer(
             f"email={customer.email}"
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="UPDATE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Email already exists"
+        )
+
         raise HTTPException(
             status_code=400,
             detail="Email already exists"
         )
 
     except psycopg2.Error as e:
-
         if conn:
             conn.rollback()
 
@@ -673,13 +917,21 @@ def update_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="UPDATE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Database error while updating customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Unable to update customer"
         )
 
     except Exception as e:
-
         if conn:
             conn.rollback()
 
@@ -690,13 +942,21 @@ def update_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="UPDATE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Unexpected error while updating customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred"
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
@@ -704,9 +964,11 @@ def update_customer(
             conn.close()
 
 
+
 # =========================================================
 # PATCH CUSTOMER
 # =========================================================
+
 
 @app.patch("/customers/{customer_id}")
 def patch_customer(
@@ -724,16 +986,23 @@ def patch_customer(
     cursor = None
 
     try:
-
         if (
             current_user["role"] == "user"
             and current_user["customer_id"] != customer_id
         ):
-
             logger.warning(
                 f"Patch customer denied: "
                 f"user={current_user['email']} "
                 f"tried to change customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="PATCH_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Permission denied: users can change only their own country"
             )
 
             raise HTTPException(
@@ -760,10 +1029,18 @@ def patch_customer(
         row = cursor.fetchone()
 
         if row is None:
-
             logger.warning(
                 f"Patch customer failed - customer not found: "
                 f"customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="PATCH_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Customer not found"
             )
 
             raise HTTPException(
@@ -772,6 +1049,15 @@ def patch_customer(
             )
 
         conn.commit()
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="PATCH_CUSTOMER",
+            target_customer_id=customer_id,
+            status="SUCCESS",
+            details="Customer country updated successfully"
+        )
 
         logger.info(
             f"Customer country patched successfully: "
@@ -795,7 +1081,6 @@ def patch_customer(
         raise
 
     except psycopg2.Error as e:
-
         if conn:
             conn.rollback()
 
@@ -806,13 +1091,21 @@ def patch_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="PATCH_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Database error while patching customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Unable to patch customer"
         )
 
     except Exception as e:
-
         if conn:
             conn.rollback()
 
@@ -823,13 +1116,21 @@ def patch_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="PATCH_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Unexpected error while patching customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred"
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
@@ -837,9 +1138,11 @@ def patch_customer(
             conn.close()
 
 
+
 # =========================================================
 # DELETE CUSTOMER
 # =========================================================
+
 
 @app.delete("/customers/{customer_id}")
 def delete_customer(
@@ -856,15 +1159,22 @@ def delete_customer(
     cursor = None
 
     try:
-
         role = current_user["role"]
 
         if role == "user":
-
             logger.warning(
                 f"Delete customer denied - "
                 f"user={current_user['email']} "
                 f"tried to delete customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="DELETE_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Permission denied: users cannot delete customers"
             )
 
             raise HTTPException(
@@ -873,10 +1183,18 @@ def delete_customer(
             )
 
         if role not in ["admin", "super-admin"]:
-
             logger.warning(
                 f"Delete customer denied - insufficient permission: "
                 f"user={current_user['email']}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="DELETE_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Permission denied: insufficient role"
             )
 
             raise HTTPException(
@@ -899,10 +1217,18 @@ def delete_customer(
         row = cursor.fetchone()
 
         if row is None:
-
             logger.warning(
                 f"Delete customer failed - customer not found: "
                 f"customer_id={customer_id}"
+            )
+
+            write_audit_log(
+                actor_customer_id=current_user.get("customer_id"),
+                actor_email=current_user.get("email"),
+                action="DELETE_CUSTOMER",
+                target_customer_id=customer_id,
+                status="FAILED",
+                details="Customer not found"
             )
 
             raise HTTPException(
@@ -911,6 +1237,15 @@ def delete_customer(
             )
 
         conn.commit()
+
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="DELETE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="SUCCESS",
+            details="Customer deleted successfully"
+        )
 
         logger.info(
             f"Customer deleted successfully: "
@@ -934,7 +1269,6 @@ def delete_customer(
         raise
 
     except psycopg2.Error as e:
-
         if conn:
             conn.rollback()
 
@@ -945,13 +1279,21 @@ def delete_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="DELETE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Database error while deleting customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Unable to delete customer"
         )
 
     except Exception as e:
-
         if conn:
             conn.rollback()
 
@@ -962,13 +1304,21 @@ def delete_customer(
             exc_info=True
         )
 
+        write_audit_log(
+            actor_customer_id=current_user.get("customer_id"),
+            actor_email=current_user.get("email"),
+            action="DELETE_CUSTOMER",
+            target_customer_id=customer_id,
+            status="FAILED",
+            details="Unexpected error while deleting customer"
+        )
+
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred"
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
@@ -976,9 +1326,11 @@ def delete_customer(
             conn.close()
 
 
+
 # =========================================================
 # REGISTER
 # =========================================================
+
 
 @app.post("/register")
 def register_user(user: RegisterUser):
@@ -991,7 +1343,6 @@ def register_user(user: RegisterUser):
     cursor = None
 
     try:
-
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -1004,7 +1355,6 @@ def register_user(user: RegisterUser):
         existing_user = cursor.fetchone()
 
         if existing_user is not None:
-
             logger.warning(
                 f"Registration failed - email already registered: "
                 f"{user.email}"
@@ -1040,8 +1390,16 @@ def register_user(user: RegisterUser):
         ))
 
         row = cursor.fetchone()
-
         conn.commit()
+
+        write_audit_log(
+            actor_customer_id=row[0],
+            actor_email=row[3],
+            action="REGISTER",
+            target_customer_id=row[0],
+            status="SUCCESS",
+            details="Customer registered successfully"
+        )
 
         logger.info(
             f"Registration successful: "
@@ -1060,13 +1418,21 @@ def register_user(user: RegisterUser):
             }
         }
 
-    except HTTPException:
+    except HTTPException as e:
         if conn:
             conn.rollback()
+
+        if e.status_code == 409:
+            write_audit_log(
+                actor_email=user.email,
+                action="REGISTER",
+                status="FAILED",
+                details="Registration failed: email already registered"
+            )
+
         raise
 
     except psycopg2.errors.UniqueViolation:
-
         if conn:
             conn.rollback()
 
@@ -1075,21 +1441,33 @@ def register_user(user: RegisterUser):
             f"{user.email}"
         )
 
+        write_audit_log(
+            actor_email=user.email,
+            action="REGISTER",
+            status="FAILED",
+            details="Registration failed: duplicate email constraint"
+        )
+
         raise HTTPException(
             status_code=409,
             detail="Email already registered"
         )
 
     except psycopg2.Error as e:
-
         if conn:
             conn.rollback()
 
         logger.error(
             f"Database error during registration: "
-            f"email={user.email}, "
-            f"error={str(e)}",
+            f"email={user.email}, error={str(e)}",
             exc_info=True
+        )
+
+        write_audit_log(
+            actor_email=user.email,
+            action="REGISTER",
+            status="FAILED",
+            details="Registration failed due to a database error"
         )
 
         raise HTTPException(
@@ -1098,15 +1476,20 @@ def register_user(user: RegisterUser):
         )
 
     except Exception as e:
-
         if conn:
             conn.rollback()
 
         logger.error(
             f"Unexpected error during registration: "
-            f"email={user.email}, "
-            f"error={str(e)}",
+            f"email={user.email}, error={str(e)}",
             exc_info=True
+        )
+
+        write_audit_log(
+            actor_email=user.email,
+            action="REGISTER",
+            status="FAILED",
+            details="Registration failed due to an unexpected error"
         )
 
         raise HTTPException(
@@ -1115,12 +1498,12 @@ def register_user(user: RegisterUser):
         )
 
     finally:
-
         if cursor:
             cursor.close()
 
         if conn:
             conn.close()
+
 
 
 # =========================================================
@@ -1157,6 +1540,12 @@ def login_user(user: LoginUser):
         row = cursor.fetchone()
 
         if row is None:
+            write_audit_log(
+    actor_email=user.email,
+    action="LOGIN",
+    status="FAILED",
+    details="Login failed: account not found"
+)
 
             logger.warning(
                 f"Login failed - user not found: {user.email}"
@@ -1173,6 +1562,13 @@ def login_user(user: LoginUser):
             user.password,
             stored_password
         ):
+            write_audit_log(
+    actor_customer_id=row[0],
+    actor_email=row[3],
+    action="LOGIN",
+    status="FAILED",
+    details="Login failed: incorrect password"
+)
 
             logger.warning(
                 f"Login failed - incorrect password: {user.email}"
@@ -1202,6 +1598,13 @@ def login_user(user: LoginUser):
         logger.info(
             f"Login successful: {user.email}"
         )
+        write_audit_log(
+    actor_customer_id=row[0],
+    actor_email=row[3],
+    action="LOGIN",
+    status="SUCCESS",
+    details="User logged in successfully"
+)
 
         return {
             "message": "Login successful",
@@ -1226,6 +1629,12 @@ def login_user(user: LoginUser):
             f"error={str(e)}",
             exc_info=True
         )
+        write_audit_log(
+    actor_email=user.email,
+    action="REGISTER",
+    status="FAILED",
+    details="Registration failed due to a database error"
+)
 
         raise HTTPException(
             status_code=500,
@@ -1240,6 +1649,12 @@ def login_user(user: LoginUser):
             f"error={str(e)}",
             exc_info=True
         )
+        write_audit_log(
+    actor_email=user.email,
+    action="REGISTER",
+    status="FAILED",
+    details="Registration failed due to an unexpected error"
+)
 
         raise HTTPException(
             status_code=500,

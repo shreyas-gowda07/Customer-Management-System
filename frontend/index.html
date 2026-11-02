@@ -28,6 +28,9 @@
             <a class="nav-link" href="#countryChartSection">
                 <span class="nav-icon">▥</span> Country Analytics
             </a>
+            <a class="nav-link" href="admin-activity.html" id="adminActivityLink" style="display: none;">
+    <span class="nav-icon">▤</span> Admin Activity
+</a>
             <a class="nav-link logout-link" href="login.html" id="logoutLink">
                 <span class="nav-icon">↪</span> Logout
             </a>
@@ -147,7 +150,7 @@
 </div>
 
 <script>
-    const API_URL = " http://192.168.0.70:8000";
+    const API_URL = "http://127.0.0.1:8000";
     const token = localStorage.getItem("access_token");
 
     let currentCustomer = {};
@@ -171,7 +174,10 @@
     document.getElementById("profileLogout").addEventListener("click", logout);
 
     const role = String(currentCustomer.role || "user").toLowerCase();
-    const displayName = currentCustomer.customer_name || currentCustomer.email || "User";
+    if (role === "admin" || role === "super-admin") {
+    document.getElementById("adminActivityLink").style.display = "flex";
+}
+    const displayName = currentCustomer.name || currentCustomer.customer_name || currentCustomer.email || "User";
 
     document.getElementById("profileName").textContent = displayName;
     document.getElementById("profileRole").textContent = role;
