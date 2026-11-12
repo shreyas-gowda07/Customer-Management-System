@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends,Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr
 import psycopg2
 from pwdlib import PasswordHash
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as Date
 import secrets
 import hashlib
 import hmac
@@ -136,8 +136,10 @@ def write_audit_log(
             conn.close()
 
 
+
 @app.get("/admin/audit-logs")
 def get_audit_logs(
+    log_date: Date | None = Query(default=None, alias="date"),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     conn = None
@@ -168,24 +170,49 @@ def get_audit_logs(
                 detail="You do not have permission to view audit logs"
             )
 
-        # Retrieve the latest audit records
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT
-                id,
-                actor_customer_id,
-                actor_email,
-                action,
-                target_customer_id,
-                status,
-                details,
-                created_at
-            FROM audit_logs
-            ORDER BY created_at DESC
-            LIMIT 500
-        """)
+        if log_date is not None:
+            # Include the selected day, from midnight to midnight
+            start_datetime = datetime.combine(
+                log_date, datetime.min.time()
+            )
+            end_datetime = start_datetime + timedelta(days=1)
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    actor_customer_id,
+                    actor_email,
+                    action,
+                    target_customer_id,
+                    status,
+                    details,
+                    created_at
+                FROM audit_logs
+                WHERE created_at >= %s
+                  AND created_at < %s
+                ORDER BY created_at DESC
+                LIMIT 500
+            """, (start_datetime, end_datetime))
+
+        else:
+            # No date selected: show the latest 500 records
+            cursor.execute("""
+                SELECT
+                    id,
+                    actor_customer_id,
+                    actor_email,
+                    action,
+                    target_customer_id,
+                    status,
+                    details,
+                    created_at
+                FROM audit_logs
+                ORDER BY created_at DESC
+                LIMIT 500
+            """)
 
         rows = cursor.fetchall()
 
@@ -224,6 +251,7 @@ def get_audit_logs(
         if conn:
             conn.close()
 
+
 # =========================================================
 # PYDANTIC MODELS
 # =========================================================
@@ -234,23 +262,26 @@ class CustomerCreate(BaseModel):
     email: EmailStr
     password: str
     role: str = "user"
+    profession: str | None=None
 
 
 class CustomerUpdate(BaseModel):
     customer_name: str
     email: EmailStr
     country: str | None = None
+    profession: str | None=None 
 
 
 class CustomerPatch(BaseModel):
     country: str
-
+    profession : str | None= None
 
 class RegisterUser(BaseModel):
     customer_name: str
     country: str
     email: EmailStr
     password: str
+    profession: str | None = None 
 
 
 class LoginUser(BaseModel):
@@ -384,7 +415,8 @@ def get_customers(
             SELECT customer_id,
                    customer_name,
                    country,
-                   email
+                   email,
+                   profession
             FROM customers
             ORDER BY customer_id
         """)
@@ -398,7 +430,8 @@ def get_customers(
                 "customer_id": row[0],
                 "customer_name": row[1],
                 "country": row[2],
-                "email": row[3]
+                "email": row[3],
+                "profession": row[4]
             })
 
         logger.info(
@@ -471,7 +504,8 @@ def get_customer(
             SELECT customer_id,
                    customer_name,
                    country,
-                   email
+                   email,
+                   profession
             FROM customers
             WHERE customer_id = %s
         """, (customer_id,))
@@ -518,7 +552,8 @@ def get_customer(
             "customer_id": row[0],
             "customer_name": row[1],
             "country": row[2],
-            "email": row[3]
+            "email": row[3],
+            "profession": row[4]
         }
 
     except HTTPException:
@@ -645,9 +680,10 @@ def create_customer(
                 email,
                 password,
                 role,
-                can_delete
+                can_delete,
+                profession
             )
-            VALUES (%s, %s, %s, %s, %s, FALSE)
+            VALUES (%s, %s, %s, %s, %s, FALSE,%s)
             RETURNING customer_id
             """,
             (
@@ -655,7 +691,8 @@ def create_customer(
                 customer.country,
                 customer.email,
                 hashed_password,
-                customer.role
+                customer.role,
+                customer.profession
             )
         )
 
@@ -815,17 +852,20 @@ def update_customer(
             UPDATE customers
             SET customer_name = %s,
                 email = %s,
-                country = COALESCE(%s, country)
+                country = COALESCE(%s, country),
+                profession=COALESCE(%s, profession)
             WHERE customer_id = %s
             RETURNING customer_id,
                       customer_name,
                       country,
-                      email
+                      email,
+                      profession
         """, (
             customer.customer_name,
             customer.email,
             customer.country,
-            customer_id
+            customer_id,
+            customer.profession
         ))
 
         row = cursor.fetchone()
@@ -873,7 +913,8 @@ def update_customer(
                 "customer_id": row[0],
                 "customer_name": row[1],
                 "country": row[2],
-                "email": row[3]
+                "email": row[3],
+                "profession": row[4]
             }
         }
 
@@ -976,6 +1017,11 @@ def patch_customer(
     customer: CustomerPatch,
     current_user: dict = Depends(get_current_user)
 ):
+    if customer.country is None and customer.profession is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide country or profession to update"
+        )
     logger.info(
         f"Patch customer attempt: "
         f"customer_id={customer_id}, "
@@ -1015,14 +1061,17 @@ def patch_customer(
 
         cursor.execute("""
             UPDATE customers
-            SET country = %s
+            SET country = COALESCE(%s, country),
+                profession = COALESCE(%s, profession)
             WHERE customer_id = %s
             RETURNING customer_id,
                       customer_name,
                       country,
-                      email
+                      email,
+                      profession
         """, (
             customer.country,
+            customer.profession,
             customer_id
         ))
 
@@ -1071,7 +1120,8 @@ def patch_customer(
                 "customer_id": row[0],
                 "customer_name": row[1],
                 "country": row[2],
-                "email": row[3]
+                "email": row[3],
+                "profession": row[4]
             }
         }
 
@@ -1374,19 +1424,22 @@ def register_user(user: RegisterUser):
                 email,
                 password,
                 role,
-                can_delete
+                can_delete,
+                profession
             )
-            VALUES (%s, %s, %s, %s, 'user', FALSE)
+            VALUES (%s, %s, %s, %s, 'user', FALSE,%s)
             RETURNING customer_id,
                       customer_name,
                       country,
                       email,
-                      role
+                      role,
+                      profession
         """, (
             user.customer_name,
             user.country,
             user.email,
-            hashed_password
+            hashed_password,
+            user.profession
         ))
 
         row = cursor.fetchone()
@@ -1414,7 +1467,8 @@ def register_user(user: RegisterUser):
                 "customer_name": row[1],
                 "country": row[2],
                 "email": row[3],
-                "role": row[4]
+                "role": row[4],
+                "profession": row[5]
             }
         }
 
@@ -2675,4 +2729,43 @@ def reset_password(
         if conn:
             conn.close()
 
+@app.get("/dashboard/profession-stats")
+def get_profession_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    conn = get_connection()
+    cursor = conn.cursor()
 
+    try:
+        cursor.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(profession), ''), 'Not specified') AS profession,
+                COUNT(*) AS total_customers
+            FROM customers
+            GROUP BY
+                COALESCE(NULLIF(TRIM(profession), ''), 'Not specified')
+            ORDER BY total_customers DESC, profession
+        """)
+
+        rows = cursor.fetchall()
+
+        return {
+            "profession_stats": [
+                {
+                    "profession": row[0],
+                    "total_customers": row[1]
+                }
+                for row in rows
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching profession statistics: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to fetch profession statistics"
+        )
+
+    finally:
+        cursor.close()
+        conn.close()

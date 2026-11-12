@@ -8,38 +8,32 @@
     <link rel="stylesheet" href="style.css">
 
     <style>
-    body {
-        min-height: 100vh;
-        margin: 0;
-        padding: 1px 20px;
-        font-family: Arial, sans-serif;
+        body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 1px 20px;
+            font-family: Arial, sans-serif;
+            background:
+                linear-gradient(
+                    rgba(244, 247, 251, 0.45),
+                    rgba(244, 247, 251, 0.60)
+                ),
+                url("admin-bg.jpg") center center / cover no-repeat fixed;
+        }
 
-        background:
-            linear-gradient(
-                rgba(244, 247, 251, 0.45),
-                rgba(244, 247, 251, 0.60)
-            ),
-            url("admin-bg.jpg") center center / cover no-repeat fixed;
-    }
-
-    
-.audit-container {
-    max-width: 1200px;
-    margin: 35px auto;
-    padding: 25px;
-
-    /* Glass effect */
-    background: rgba(255, 255, 255, 0.30);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
-
-    overflow-x: auto;
-}
-
+        .audit-container {
+            max-width: 1200px;
+            margin: 35px auto;
+            padding: 25px;
+            /* Glass effect */
+            background: rgba(255, 255, 255, 0.30);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
+            overflow-x: auto;
+        }
 
         .audit-header {
             display: flex;
@@ -75,37 +69,45 @@
             margin-bottom: 20px;
         }
 
-        .audit-filters select {
-            padding: 9px;
+        .audit-filters input,
+        .audit-filters select,
+        .audit-filters button {
+            padding: 9px 12px;
             border: 1px solid #ccc;
             border-radius: 6px;
+            font-size: 14px;
         }
 
-       
-.audit-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 850px;
-    background: rgba(255, 255, 255, 0.12);
-}
+        .audit-filters button {
+            background: #365b45;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
 
-.audit-table th,
-.audit-table td {
-    padding: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
-    text-align: left;
-    font-size: 14px;
-}
+        .audit-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 850px;
+            background: rgba(255, 255, 255, 0.12);
+        }
 
-.audit-table th {
-    background: rgba(54, 91, 69, 0.65);
-    color: white;
-}
+        .audit-table th,
+        .audit-table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+            text-align: left;
+            font-size: 14px;
+        }
 
-.audit-table td {
-    background: rgba(255, 255, 255, 0.12);
-}
+        .audit-table th {
+            background: rgba(54, 91, 69, 0.65);
+            color: white;
+        }
 
+        .audit-table td {
+            background: rgba(255, 255, 255, 0.12);
+        }
 
         .audit-status-success {
             color: #187443;
@@ -125,6 +127,7 @@
 
 <body>
     <div class="audit-container">
+
         <div class="audit-header">
             <div>
                 <h1>Admin Activity Dashboard</h1>
@@ -133,11 +136,29 @@
 
             <div class="audit-actions">
                 <a href="index.html">Back to Dashboard</a>
-                <button onclick="loadAuditLogs()">Refresh Logs</button>
+                <button type="button" onclick="loadAuditLogs()">
+                    Refresh Logs
+                </button>
             </div>
         </div>
 
+        <!-- Date, Status and Action Filters -->
         <div class="audit-filters">
+
+            <input
+                type="date"
+                id="date-filter"
+                aria-label="Filter audit logs by date"
+            >
+
+            <button type="button" onclick="searchAuditLogs()">
+                Search by Date
+            </button>
+
+            <button type="button" onclick="clearDateFilter()">
+                Clear Date
+            </button>
+
             <select id="status-filter" onchange="renderAuditLogs()">
                 <option value="ALL">All Statuses</option>
                 <option value="SUCCESS">Successful</option>
@@ -147,10 +168,12 @@
             <select id="action-filter" onchange="renderAuditLogs()">
                 <option value="ALL">All Actions</option>
             </select>
+
         </div>
 
         <p id="audit-message">Loading audit logs...</p>
 
+        <!-- Audit Logs Table -->
         <table class="audit-table">
             <thead>
                 <tr>
@@ -163,8 +186,10 @@
                     <th>Details</th>
                 </tr>
             </thead>
+
             <tbody id="audit-table-body"></tbody>
         </table>
+
     </div>
 
     <script>
@@ -172,7 +197,9 @@
 
         let allAuditLogs = [];
 
-        async function loadAuditLogs() {
+        // Load audit logs from the backend
+        async function loadAuditLogs(selectedDate = "") {
+
             const message = document.getElementById("audit-message");
             const token = localStorage.getItem("access_token");
 
@@ -184,56 +211,101 @@
             message.textContent = "Loading audit logs...";
 
             try {
-                const response = await fetch(
-                    `${API_URL}/admin/audit-logs`,
-                    {
-                        headers: {
-                            "Authorization": `Bearer ${token}`
-                        }
+                let url = `${API_URL}/admin/audit-logs`;
+
+                // Add selected date to the API request
+                if (selectedDate) {
+                    url += `?date=${encodeURIComponent(selectedDate)}`;
+                }
+
+                const response = await fetch(url, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
                     }
-                );
+                });
 
                 if (!response.ok) {
+
                     if (response.status === 401) {
                         message.textContent =
                             "Your session may have expired. Please log in again.";
+
                     } else if (response.status === 403) {
                         message.textContent =
                             "Access denied. An admin role is required.";
+
                     } else {
                         message.textContent =
                             `Unable to load audit logs (${response.status}).`;
                     }
+
                     return;
                 }
 
                 const data = await response.json();
+
                 allAuditLogs = data.audit_logs || [];
 
                 populateActionFilter();
                 renderAuditLogs();
 
             } catch (error) {
+
                 console.error("Audit log error:", error);
+
                 message.textContent =
                     "Could not connect to the backend. Check that it is running.";
             }
         }
 
+        // Search audit logs by selected date
+        function searchAuditLogs() {
+
+            const selectedDate =
+                document.getElementById("date-filter").value;
+
+            if (!selectedDate) {
+                document.getElementById("audit-message").textContent =
+                    "Please select a date first.";
+
+                return;
+            }
+
+            loadAuditLogs(selectedDate);
+        }
+
+        // Clear date filter and load recent audit logs
+        function clearDateFilter() {
+
+            document.getElementById("date-filter").value = "";
+
+            loadAuditLogs();
+        }
+
+        // Populate action dropdown dynamically
         function populateActionFilter() {
+
             const select = document.getElementById("action-filter");
             const previousValue = select.value;
 
             const actions = [
-                ...new Set(allAuditLogs.map(log => log.action).filter(Boolean))
+                ...new Set(
+                    allAuditLogs
+                        .map(log => log.action)
+                        .filter(Boolean)
+                )
             ].sort();
 
-            select.innerHTML = '<option value="ALL">All Actions</option>';
+            select.innerHTML =
+                '<option value="ALL">All Actions</option>';
 
             actions.forEach(action => {
+
                 const option = document.createElement("option");
+
                 option.value = action;
                 option.textContent = action;
+
                 select.appendChild(option);
             });
 
@@ -242,7 +314,9 @@
             }
         }
 
+        // Display audit logs with status and action filters
         function renderAuditLogs() {
+
             const tbody = document.getElementById("audit-table-body");
             const message = document.getElementById("audit-message");
 
@@ -250,26 +324,32 @@
 
             const statusFilter =
                 document.getElementById("status-filter").value;
+
             const actionFilter =
                 document.getElementById("action-filter").value;
 
             const filteredLogs = allAuditLogs.filter(log => {
+
                 const matchesStatus =
-                    statusFilter === "ALL" || log.status === statusFilter;
+                    statusFilter === "ALL" ||
+                    log.status === statusFilter;
 
                 const matchesAction =
-                    actionFilter === "ALL" || log.action === actionFilter;
+                    actionFilter === "ALL" ||
+                    log.action === actionFilter;
 
                 return matchesStatus && matchesAction;
             });
 
             filteredLogs.forEach(log => {
+
                 const row = document.createElement("tr");
 
                 const values = [
                     log.created_at
                         ? new Date(log.created_at).toLocaleString()
                         : "—",
+
                     log.actor_customer_id ?? "—",
                     log.actor_email ?? "—",
                     log.action ?? "—",
@@ -279,7 +359,9 @@
                 ];
 
                 values.forEach((value, index) => {
+
                     const cell = document.createElement("td");
+
                     cell.textContent = value;
 
                     if (index === 5) {
@@ -299,7 +381,9 @@
                 `Showing ${filteredLogs.length} of ${allAuditLogs.length} audit records.`;
         }
 
+        // Load logs when the page opens
         loadAuditLogs();
+
     </script>
 </body>
 </html>

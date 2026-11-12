@@ -224,6 +224,16 @@
                         required
                     >
                 </div>
+                <div class="form-group">
+                    <label for ="profession">Profession</label>
+                    <input
+                        type="text"
+                        id="profession"
+                        name="profession"
+                        placeholder="Enter your profession (optional)"
+                        autocomplete="organization-title"
+                    >    
+                </div>
 
                 <div class="form-group">
                     <label for="email">Email Address</label>
@@ -280,6 +290,9 @@
                 const country =
                     document.getElementById("country").value.trim();
 
+                const profession =
+                    document.getElementById("profession").value.trim();    
+
                 const email =
                     document.getElementById("email").value.trim();
 
@@ -305,6 +318,7 @@
                         body: JSON.stringify({
                             customer_name: customer_name,
                             country: country,
+                            profession: profession || null,
                             email: email,
                             password: password
                         })

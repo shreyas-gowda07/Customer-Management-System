@@ -1090,3 +1090,88 @@ body.login-page {
 .login-card a:hover {
     text-decoration: underline;
 }
+/* =====================================
+   CUSTOMERS BY PROFESSION - DOUGHNUT
+===================================== */
+
+.profession-section {
+    margin-bottom: 22px;
+}
+
+.profession-panel {
+    width: 100%;
+}
+
+.profession-chart-layout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 55px;
+    padding: 20px 10px;
+    flex-wrap: wrap;
+}
+
+.profession-doughnut-wrapper {
+    width: 280px;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profession-doughnut-wrapper canvas {
+    display: block;
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+}
+
+.profession-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 220px;
+    max-width: 360px;
+    flex: 1;
+}
+
+.profession-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.profession-color-dot {
+    width: 13px;
+    height: 13px;
+    min-width: 13px;
+    border-radius: 50%;
+}
+
+.profession-legend-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profession-legend-details strong {
+    font-size: 14px;
+    color: #334155;
+}
+
+.profession-legend-details span {
+    font-size: 13px;
+    color: #64748b;
+}
+
+@media (max-width: 600px) {
+    .profession-chart-layout {
+        gap: 25px;
+        padding: 15px 0;
+    }
+
+    .profession-legend {
+        width: 100%;
+        min-width: 0;
+    }
+}

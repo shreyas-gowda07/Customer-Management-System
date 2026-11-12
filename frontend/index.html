@@ -28,6 +28,9 @@
             <a class="nav-link" href="#countryChartSection">
                 <span class="nav-icon">▥</span> Country Analytics
             </a>
+            <a class="nav-link" href="/#professionChartSection">
+                <span class="nav-icon">◉</span> Profession Analytics
+            </a>
             <a class="nav-link" href="admin-activity.html" id="adminActivityLink" style="display: none;">
     <span class="nav-icon">▤</span> Admin Activity
 </a>
@@ -141,6 +144,41 @@
                 </div>
             </article>
         </section>
+        <section class="profession-section" id="professionChartSection">
+    <article class="panel profession-panel">
+
+        <div class="panel-header">
+            <div>
+                <h2>Customers by Profession</h2>
+                <p>Distribution of registered customers by profession</p>
+            </div>
+            <span class="panel-badge">Analytics</span>
+        </div>
+
+        <div class="profession-chart-layout">
+
+            <div class="profession-doughnut-wrapper">
+                <canvas
+                    id="professionChart"
+                    width="280"
+                    height="280"
+                    role="img"
+                    aria-label="Doughnut chart showing customers by profession">
+                </canvas>
+            </div>
+
+            <div
+                class="profession-legend"
+                id="professionLegend">
+                <p class="empty-state">
+                    Loading profession statistics...
+                </p>
+            </div>
+
+        </div>
+
+    </article>
+</section>
 
         <footer class="dashboard-footer">
             <p>CustomerHub · Customer Management System</p>
@@ -267,8 +305,133 @@
                 '<p class="empty-state">Country analytics could not be loaded.</p>';
         }
     }
+    async function loadProfessionChart() {
+    const canvas = document.getElementById("professionChart");
+    const legend = document.getElementById("professionLegend");
 
+    const ctx = canvas.getContext("2d");
+
+    const colors = [
+        "#3b82f6",
+        "#14b8a6",
+        "#f59e0b",
+        "#8b5cf6",
+        "#ec4899",
+        "#64748b",
+        "#22c55e",
+        "#ef4444"
+    ];
+
+    try {
+        const response = await fetch(
+            `${API_URL}/dashboard/profession-stats`,
+            {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            }
+        );
+
+        if (response.status === 401) {
+            logout();
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.detail || "Unable to load profession statistics."
+            );
+        }
+
+        const stats = data.profession_stats || [];
+
+        legend.replaceChildren();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const totalCustomers = stats.reduce(
+            (sum, item) => sum + Number(item.total_customers),
+            0
+        );
+
+        if (totalCustomers === 0) {
+            legend.innerHTML =
+                '<p class="empty-state">No profession data available.</p>';
+            return;
+        }
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = 90;
+        const lineWidth = 34;
+
+        let startAngle = -Math.PI / 2;
+
+        stats.forEach((item, index) => {
+            const count = Number(item.total_customers);
+            const percentage = (count / totalCustomers) * 100;
+            const sliceAngle = (count / totalCustomers) * Math.PI * 2;
+
+            ctx.beginPath();
+            ctx.arc(
+                centerX,
+                centerY,
+                radius,
+                startAngle,
+                startAngle + sliceAngle
+            );
+
+            ctx.strokeStyle = colors[index % colors.length];
+            ctx.lineWidth = lineWidth;
+            ctx.stroke();
+
+            startAngle += sliceAngle;
+
+            const legendItem = document.createElement("div");
+            legendItem.className = "profession-legend-item";
+
+            const colorDot = document.createElement("span");
+            colorDot.className = "profession-color-dot";
+            colorDot.style.backgroundColor =
+                colors[index % colors.length];
+
+            const details = document.createElement("div");
+            details.className = "profession-legend-details";
+
+            const name = document.createElement("strong");
+            name.textContent = item.profession;
+
+            const value = document.createElement("span");
+            value.textContent =
+                `${count} customers · ${percentage.toFixed(1)}%`;
+
+            details.append(name, value);
+            legendItem.append(colorDot, details);
+            legend.appendChild(legendItem);
+        });
+
+        // Display the total number of customers in the centre.
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.fillStyle = "#64748b";
+        ctx.font = "14px Arial";
+        ctx.fillText("Total Customers", centerX, centerY - 10);
+
+        ctx.fillStyle = "#1e293b";
+        ctx.font = "bold 25px Arial";
+        ctx.fillText(totalCustomers, centerX, centerY + 17);
+
+    } catch (error) {
+        console.error("Profession chart error:", error);
+
+        legend.innerHTML =
+            '<p class="empty-state">Profession analytics could not be loaded.</p>';
+    }
+}
     loadDashboard();
+    loadProfessionChart();
 </script>
 </body>
 </html>

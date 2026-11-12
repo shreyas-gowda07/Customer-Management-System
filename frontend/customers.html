@@ -28,6 +28,9 @@
             <a class="nav-link" href="index.html#countryChartSection">
                 <span class="nav-icon">▥</span> Country Analytics
             </a>
+            <a class="nav-link" href="index.html#professionChartSection">
+                <span class="nav-icon">◉</span> Profession Analytics
+            </a>
             <a class="nav-link logout-link" href="login.html" id="logoutLink">
                 <span class="nav-icon">↪</span> Logout
             </a>
@@ -78,6 +81,11 @@
                         <label for="newCustomerName">Customer Name</label>
                         <input id="newCustomerName" name="customer_name"
                                maxlength="150" required placeholder="Enter full name">
+                    </div>
+                    <div class="form-field">
+                        <label for="newCustomerProfession">Profession</label>
+                        <input id="newCustomerProfession" name="profession"
+                                maxlength="100" placeholder="Enter profession (optional)">
                     </div>
 
                     <div class="form-field">
@@ -140,6 +148,11 @@
                         <label for="editCustomerCountry">Country</label>
                         <input id="editCustomerCountry" required>
                     </div>
+                    <div class="form-field">
+                        <label for="editCustomerProfession">Profession</label>
+                        <input id="editCustomerProfession" maxlength="100"
+                                placeholder="Enter profession (optional)">
+                    </div>
 
                     <div class="form-field">
                         <label for="editCustomerEmail">Email</label>
@@ -170,12 +183,13 @@
                                 <th>ID</th>
                                 <th>Name</th>
                                 <th>Country</th>
+                                <th>Profession</th>
                                 <th>Email</th>
                                 <th id="actionsHeader">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="customersTableBody">
-                            <tr><td colspan="5" class="empty-cell">Loading customers...</td></tr>
+                            <tr><td colspan="6" class="empty-cell">Loading customers...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -310,7 +324,7 @@
         if (customers.length === 0) {
             const row = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 5;
+            cell.colSpan = 6;
             cell.className = "empty-cell";
             cell.textContent = "No customers found.";
             row.appendChild(cell);
@@ -324,6 +338,7 @@
                 makeCell(customer.customer_id),
                 makeCell(customer.customer_name),
                 makeCell(customer.country),
+                makeCell(customer.profession || "not specified"),
                 makeCell(customer.email)
             );
 
@@ -373,7 +388,7 @@
         clearMessage();
         const tbody = document.getElementById("customersTableBody");
         tbody.innerHTML =
-            '<tr><td colspan="5" class="empty-cell">Loading customers...</td></tr>';
+            '<tr><td colspan="6" class="empty-cell">Loading customers...</td></tr>';
 
         try {
             const result = await apiRequest("/customers");
@@ -383,7 +398,7 @@
             tbody.innerHTML = "";
             const row = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 5;
+            cell.colSpan = 6;
             cell.className = "empty-cell";
             cell.textContent = error.message;
             row.appendChild(cell);
@@ -407,6 +422,7 @@
         const payload = {
             customer_name: document.getElementById("newCustomerName").value.trim(),
             country: document.getElementById("newCustomerCountry").value.trim(),
+            profession:document.getElementById("newCustomerProfession").value.trim() || null,
             email: document.getElementById("newCustomerEmail").value.trim(),
             password: document.getElementById("newCustomerPassword").value,
             role: document.getElementById("newCustomerRole").value
@@ -435,6 +451,7 @@
         document.getElementById("searchCustomerId").value = customer.customer_id;
         document.getElementById("editCustomerName").value = customer.customer_name || "";
         document.getElementById("editCustomerCountry").value = customer.country || "";
+        document.getElementById("editCustomerProfession").value = customer.profession || ""; 
         document.getElementById("editCustomerEmail").value = customer.email || "";
         document.getElementById("updateCustomerForm").hidden = false;
         clearMessage();
@@ -485,6 +502,7 @@
         const payload = {
             customer_name: document.getElementById("editCustomerName").value.trim(),
             country: document.getElementById("editCustomerCountry").value.trim(),
+            profession: document.getElementById("editCustomerProfession").value.trim(),
             email: document.getElementById("editCustomerEmail").value.trim()
         };
 
