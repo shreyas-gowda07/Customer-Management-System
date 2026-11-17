@@ -864,8 +864,8 @@ def update_customer(
             customer.customer_name,
             customer.email,
             customer.country,
+            customer.profession,
             customer_id,
-            customer.profession
         ))
 
         row = cursor.fetchone()
